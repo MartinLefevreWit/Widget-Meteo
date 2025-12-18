@@ -10,6 +10,7 @@
     :root {
       --bg: #0f172a; --panel: #111827; --text: #e5e7eb; --muted: #9ca3af;
       --accent: #38bdf8; --radius: 14px; --shadow: 0 10px 25px rgba(0,0,0,.35);
+      --danger: #ef4444;
     }
     * { box-sizing: border-box; }
     html, body { margin:0; padding:0; background:var(--bg); color:var(--text);
@@ -30,46 +31,73 @@
     .card { background:var(--panel); border:1px solid #1f2937; border-radius:12px; padding:12px; text-align:center; }
     .label { font-size:12px; color:var(--muted); margin-bottom:6px; }
     .value { font-weight:600; }
-    .error { padding:14px 16px; color:#ef4444; background:rgba(239,68,68,.08);
+    .error { padding:14px 16px; color:var(--danger); background:rgba(239,68,68,.08);
       border-top:1px solid rgba(239,68,68,.3); font-size:14px; display:none; }
     .footer { padding:10px 16px; font-size:12px; color:var(--muted); border-top:1px solid #1f2937; }
     a { color: var(--accent); text-decoration: none; }
+
+    /* Panneau debug */
+    .debug {
+      width:100%; max-width:680px; margin:24px auto 0; border-radius:12px;
+      background: rgba(239,68,68,.08); border:1px solid rgba(239,68,68,.3);
+      color: var(--text); display:none;
+    }
+    .debug h3 { margin:0; padding:12px 14px; font-size:14px; color:var(--danger); border-bottom:1px solid rgba(239,68,68,.3); }
+    .debug .content { padding:12px 14px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size:12px; }
+    .debug pre { margin:0; white-space:pre-wrap; word-wrap:break-word; }
+    .debug .row { margin-bottom:10px; }
+    .debug .row b { color:#fca5a5; }
   </style>
 </head>
 <body>
   <div class="wrapper">
-    <div class="widget" role="region" aria-label="Widget météo">
-      <div class="header">
-        <div class="city" id="city">Nice, FR</div>
-        <div class="updated" id="updated">—</div>
+    <div>
+      <!-- Widget -->
+      <div class="widget" role="region" aria-label="Widget météo">
+        <div class="header">
+          <div class="city" id="city">Nice, FR</div>
+          <div class="updated" id="updated">—</div>
+        </div>
+
+        <div class="main">
+          <div>
+            <div class="temp" id="temp">--°C</div>
+            <div class="desc" id="desc">—</div>
+          </div>
+          <img class="icon" id="icon" alt="Icône météo" />
+        </div>
+
+        <div class="grid" aria-label="Détails météo">
+          <div class="card">
+            <div class="label">Vent</div>
+            <div class="value" id="wind">—</div>
+          </div>
+          <div class="card">
+            <div class="label">Humidité</div>
+            <div class="value" id="humidity">—</div>
+          </div>
+          <div class="card">
+            <div class="label">Pression</div>
+            <div class="value" id="pressure">—</div>
+          </div>
+        </div>
+
+        <div class="error" id="error"></div>
+        <div class="footer">
+          Source : <a href="https://openweathermap.org/" target="_blank" rel="noopener">OpenWeather</a>
+        </div>
       </div>
 
-      <div class="main">
-        <div>
-          <div class="temp" id="temp">--°C</div>
-          <div class="desc" id="desc">—</div>
+      <!-- Panneau debug (affiché automatiquement si erreur) -->
+      <div class="debug" id="debug">
+        <h3>Debug API OpenWeather</h3>
+        <div class="content">
+          <div class="row"><b>URL appelée :</b> <span id="dbg-url">—</span></div>
+          <div class="row"><b>Statut :</b> <span id="dbg-status">—</span></div>
+          <div class="row"><b>Message :</b> <span id="dbg-msg">—</span></div>
+          <div class="row"><b>Réponse brute :</b></div>
+          <pre id="dbg-body">—</pre>
         </div>
-        <img class="icon" id="icon" alt="Icône météo" />
-      </div>
-
-      <div class="grid" aria-label="Détails météo">
-        <div class="card">
-          <div class="label">Vent</div>
-          <div class="value" id="wind">—</div>
-        </div>
-        <div class="card">
-          <div class="label">Humidité</div>
-          <div class="value" id="humidity">—</div>
-        </div>
-        <div class="card">
-          <div class="label">Pression</div>
-          <div class="value" id="pressure">—</div>
-        </div>
-      </div>
-
-      <div class="error" id="error"></div>
-      <div class="footer">
-        Source : <a href="https://openweathermap.org/" target="_blank" rel="noopener">OpenWeather</a>
       </div>
     </div>
   </div>
@@ -81,7 +109,7 @@
     const LAT = 43.7009;
     const LON = 7.2683;
 
-    // Clé seule (ne pas mettre l'URL ici)
+    // ⚠️ Clé seule (ne pas mettre l'URL ici)
     const API_KEY = "f5f9a18a44029213156c7571d5b0d3f0";
     const USE_PROXY = false; // passe à true si tu utilises un proxy Netlify/Cloudflare
 
@@ -96,6 +124,15 @@
     const showError = (msg) => { const el = $('error'); el.textContent = msg; el.style.display = 'block'; };
     const formatTime = (d = new Date()) => new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' }).format(d);
     const owmIconUrl = (icon) => `https://openweathermap.org/img/wn/${icon}@2x.png`;
+
+    // Debug helpers
+    function openDebug({ url, status, message, body }) {
+      $('debug').style.display = 'block';
+      $('dbg-url').textContent = url || '—';
+      $('dbg-status').textContent = typeof status !== 'undefined' ? String(status) : '—';
+      $('dbg-msg').textContent = message || '—';
+      $('dbg-body').textContent = body || '—';
+    }
 
     // =============== URL BUILDER ===============
     function buildUrl() {
@@ -132,21 +169,27 @@
       try {
         res = await fetch(url, { cache: 'no-store' });
       } catch (netErr) {
+        openDebug({ url, status: '—', message: `Erreur réseau (fetch) : ${netErr?.message || netErr}`, body: '' });
         throw new Error(`Erreur réseau (fetch) : ${netErr?.message || netErr}`);
       }
 
-      if (!res.ok) {
-        const text = await res.text();
-        const msg = res.status === 401 ? "Clé API invalide (401). Vérifie API_KEY."
-                  : res.status === 404 ? "Coordonnées introuvables (404)."
-                  : `Erreur API (${res.status}) : ${text}`;
-        throw new Error(msg);
+      const textBody = await res.text(); // lis le corps une fois
+      // Re-crée un Response pour pouvoir faire .json() ensuite si OK
+      const cloned = new Response(textBody, { status: res.status, statusText: res.statusText, headers: res.headers });
+
+      if (!cloned.ok) {
+        openDebug({ url, status: cloned.status, message: cloned.statusText, body: textBody });
+        const msg = cloned.status === 401 ? "Clé API invalide (401). Vérifie API_KEY."
+                  : cloned.status === 404 ? "Coordonnées introuvables (404)."
+                  : `Erreur API (${cloned.status})`;
+        throw new Error(`${msg} : ${textBody}`);
       }
 
       let data;
       try {
-        data = await res.json();
+        data = await cloned.json();
       } catch (parseErr) {
+        openDebug({ url, status: cloned.status, message: `Réponse non-JSON`, body: textBody });
         throw new Error(`Réponse non-JSON : ${parseErr?.message || parseErr}`);
       }
 
@@ -180,12 +223,21 @@
       try {
         const data = await getWeather();
         render(data);
+        // ferme le debug si jamais ouvert
+        $('debug').style.display = 'none';
         console.info("[Widget-Meteo] OK", data);
       } catch (e) {
-        console.error("[Widget-Meteo        console.error("[Widget-Meteo] Échec :", e);
+        console.error("[Widget-Meteo] Échec :", e);
         showError(e.message || "Erreur météo");
       }
     })();
+
+    // Petit raccourci pour vider le cache local via clavier (Alt+L)
+    window.addEventListener('keydown', (ev) => {
+      if (ev.altKey && ev.key.toLowerCase() === 'l') {
+        localStorage.clear();
+        location.reload();
+      }
+       });
   </script>
 </body>
-
