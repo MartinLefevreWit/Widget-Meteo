@@ -81,29 +81,25 @@
     const LAT = 43.7009;
     const LON = 7.2683;
 
-    // 1) Mode direct OpenWeather (clé exposée côté client)
-    const API_KEY = "f5f9a18a44029213156c7571d5b0d3f0"; // <--- remplace
-    const USE_PROXY = false;
+    // Clé seule (ne pas mettre l'URL ici)
+    const API_KEY = "f5f9a18a44029213156c7571d5b0d3f0";
+    const USE_PROXY = false; // passe à true si tu utilises un proxy Netlify/Cloudflare
 
-    // 2) Si tu actives un proxy serverless (section 3), mets true et configure PROXY_URL
-    const PROXY_URL = "/.netlify/functions/openweather-proxy"; // ou ton URL Cloudflare Worker
+    // Si USE_PROXY = true, configure PROXY_URL (Netlify Functions ou Cloudflare Worker)
+    const PROXY_URL = "/.netlify/functions/openweather-proxy";
 
-    // Cache local (10 min)
+    // Cache local (10 minutes)
     const TTL_MS = 10 * 60 * 1000;
 
     // =============== HELPERS UI ===============
     const $ = (id) => document.getElementById(id);
     const showError = (msg) => { const el = $('error'); el.textContent = msg; el.style.display = 'block'; };
     const formatTime = (d = new Date()) => new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' }).format(d);
+    const owmIconUrl = (icon) => `https://openweathermap.org/img/wn/${icon}@2x.png`;
 
-    function owmIconUrl(icon) {
-      return `https://openweathermap.org/img/wn/${icon}@2x.png`;
-    }
-
-    // =============== FETCH ===============
+    // =============== URL BUILDER ===============
     function buildUrl() {
       if (USE_PROXY) {
-        // Le proxy lit lat/lon et injecte la clé côté serveur
         const url = new URL(PROXY_URL, location.origin);
         url.searchParams.set("lat", LAT);
         url.searchParams.set("lon", LON);
@@ -111,16 +107,16 @@
         url.searchParams.set("lang", "fr");
         return url.toString();
       }
-      // Appel direct (clé visible)
       const url = new URL("https://api.openweathermap.org/data/2.5/weather");
       url.searchParams.set("lat", LAT);
       url.searchParams.set("lon", LON);
       url.searchParams.set("units", "metric");
       url.searchParams.set("lang", "fr");
-      url.searchParams.set("appid", API_KEY);
+      url.searchParams.set("appid", API_KEY); // <-- clé seule
       return url.toString();
     }
 
+    // =============== FETCH ===============
     async function getWeather() {
       const cacheKey = `owm:${LAT},${LON}:weather`;
       const cachedRaw = localStorage.getItem(cacheKey);
@@ -132,5 +128,64 @@
       }
 
       const url = buildUrl();
-      const res = await fetch(url, { cache: 'no-store' });
+      let res;
+      try {
+        res = await fetch(url, { cache: 'no-store' });
+      } catch (netErr) {
+        throw new Error(`Erreur réseau (fetch) : ${netErr?.message || netErr}`);
+      }
+
       if (!res.ok) {
+        const text = await res.text();
+        const msg = res.status === 401 ? "Clé API invalide (401). Vérifie API_KEY."
+                  : res.status === 404 ? "Coordonnées introuvables (404)."
+                  : `Erreur API (${res.status}) : ${text}`;
+        throw new Error(msg);
+      }
+
+      let data;
+      try {
+        data = await res.json();
+      } catch (parseErr) {
+        throw new Error(`Réponse non-JSON : ${parseErr?.message || parseErr}`);
+      }
+
+      localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data }));
+      return data;
+    }
+
+    // =============== RENDER ===============
+    function render(data) {
+      const temp      = data?.main?.temp;
+      const humidity  = data?.main?.humidity;
+      const pressure  = data?.main?.pressure;
+      const windMs    = data?.wind?.speed ?? null;
+      const windKmh   = Number.isFinite(windMs) ? Math.round(windMs * 3.6) : null;
+      const desc      = data?.weather?.[0]?.description || '—';
+      const icon      = data?.weather?.[0]?.icon || '01d';
+
+      $('city').textContent      = `${CITY}, ${COUNTRY}`;
+      $('temp').textContent      = Number.isFinite(temp) ? `${Math.round(temp)}°C` : '--°C';
+      $('desc').textContent      = desc;
+      $('wind').textContent      = Number.isFinite(windKmh) ? `${windKmh} km/h` : '—';
+      $('humidity').textContent  = Number.isFinite(humidity) ? `${Math.round(humidity)}%` : '—';
+      $('pressure').textContent  = Number.isFinite(pressure) ? `${Math.round(pressure)} hPa` : '—';
+      $('icon').src              = owmIconUrl(icon);
+      $('icon').alt              = `Météo : ${desc}`;
+      $('updated').textContent   = `Maj ${formatTime()}`;
+    }
+
+    // =============== BOOTSTRAP ===============
+    (async () => {
+      try {
+        const data = await getWeather();
+        render(data);
+        console.info("[Widget-Meteo] OK", data);
+      } catch (e) {
+        console.error("[Widget-Meteo        console.error("[Widget-Meteo] Échec :", e);
+        showError(e.message || "Erreur météo");
+      }
+    })();
+  </script>
+</body>
+
