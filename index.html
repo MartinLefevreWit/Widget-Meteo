@@ -4,45 +4,40 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Widget Météo</title>
+  <title>Widget Météo (Météo‑France)</title>
   <style>
     :root {
-      --bg: #0f172a;       /* fond */
-      --panel: #111827;    /* panneau */
-      --text: #e5e7eb;     /* texte */
-      --muted: #9ca3af;    /* texte secondaire */
-      --accent: #38bdf8;   /* accent */
-      --radius: 14px;
-      --shadow: 0 10px 25px rgba(0,0,0,0.35);
+      --bg: #0f172a; --panel: #111827; --text: #e5e7eb; --muted: #9ca3af;
+      --accent: #38bdf8; --radius: 14px; --shadow: 0 10px 25px rgba(0,0,0,.35);
     }
     * { box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Noto Sans", sans-serif; }
-    .wrapper { padding: 12px; }
-    .widget {
-      width: 100%; max-width: 380px; margin: 0 auto; border-radius: var(--radius);
-      background: linear-gradient(180deg, #0b1220 0%, #0f172a 100%);
-      border: 1px solid #1f2937; box-shadow: var(--shadow); overflow: hidden;
-    }
-    .header { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: rgba(56,189,248,.08); border-bottom: 1px solid #1f2937; }
-    .city { font-weight: 600; letter-spacing: .2px; }
-    .updated { margin-left: auto; font-size: 12px; color: var(--muted); }
-    .main { display: grid; grid-template-columns: 1fr auto; gap: 12px; padding: 16px; }
-    .temp { font-size: 42px; font-weight: 700; line-height: 1; }
-    .desc { margin-top: 4px; color: var(--muted); text-transform: capitalize; }
-    .icon { width: 72px; height: 72px; filter: drop-shadow(0 4px 8px rgba(0,0,0,.25)); }
-    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 0 16px 16px 16px; }
-    .card { background: var(--panel); border: 1px solid #1f2937; border-radius: 12px; padding: 12px; text-align: center; }
-    .label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
-    .value { font-weight: 600; }
-    .error { padding: 14px 16px; color: #ef4444; background: rgba(239,68,68,.08); border-top: 1px solid rgba(239,68,68,.3); font-size: 14px; display:none; }
-    /* Hauteur idéale dans l’iframe ~260–300px */
+    html, body { margin:0; padding:0; background:var(--bg); color:var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Noto Sans", sans-serif; }
+    .wrapper { padding:12px; }
+    .widget { width:100%; max-width:380px; margin:0 auto; border-radius:var(--radius);
+      background: linear-gradient(180deg,#0b1220 0%,#0f172a 100%);
+      border:1px solid #1f2937; box-shadow:var(--shadow); overflow:hidden; }
+    .header { display:flex; align-items:center; gap:12px; padding:14px 16px;
+      background: rgba(56,189,248,.08); border-bottom:1px solid #1f2937; }
+    .city { font-weight:600; letter-spacing:.2px; }
+    .updated { margin-left:auto; font-size:12px; color:var(--muted); }
+    .main { display:grid; grid-template-columns:1fr auto; gap:12px; padding:16px; }
+    .temp { font-size:42px; font-weight:700; line-height:1; }
+    .desc { margin-top:4px; color:var(--muted); text-transform:capitalize; }
+    .icon { width:72px; height:72px; filter: drop-shadow(0 4px 8px rgba(0,0,0,.25)); }
+    .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; padding:0 16px 16px; }
+    .card { background:var(--panel); border:1px solid #1f2937; border-radius:12px; padding:12px; text-align:center; }
+    .label { font-size:12px; color:var(--muted); margin-bottom:6px; }
+    .value { font-weight:600; }
+    .error { padding:14px 16px; color:#ef4444; background:rgba(239,68,68,.08);
+      border-top:1px solid rgba(239,68,68,.3); font-size:14px; display:none; }
   </style>
 </head>
 <body>
   <div class="wrapper">
     <div class="widget">
       <div class="header">
-        <div class="city" id="city">—</div>
+        <div class="city" id="city">Nice, FR</div>
         <div class="updated" id="updated">Maj …</div>
       </div>
 
@@ -75,37 +70,87 @@
 
   <script>
     /**
-     * 🔧 Paramètres simples à modifier ici
-     * - Mets TA CLÉ API OpenWeather
-     * - Change la ville si besoin
+     * 🔧 RENSEIGNE CES 2 VARIABLES :
+     * - ENDPOINT_URL : colle ici **l'URL de requête** affichée sur la page de test Météo-France (Request URL)
+     * - TOKEN        : colle ici **ton jeton JWT** (commence par "eyJ...")
+     *
+     * Exemples fréquents d’URL (à adapter selon l’API que tu as souscrite) :
+     *   https://portail-api.meteofrance.fr/v1/forecast?lat=43.7&lon=7.25
+     *   https://portail-api.meteofrance.fr/v1/observations?lat=43.7&lon=7.25
      */
-    const API_KEY = "f5f9a18a44029213156c7571d5b0d3f0"; // <-- remplace par ta clé
-    const VILLE   = "Nice";
-    const PAYS    = "FR";
-    const UNITS   = "metric";     // "metric"=°C, "imperial"=°F
-    const LANG    = "fr";
-    const TTL_MS  = 10 * 60 * 1000; // cache local 10 minutes
+    const ENDPOINT_URL = "https://public-api.meteofrance.fr/public/aromepi/1.0"";  // <--- colle l’URL exacte depuis la page de test
+    const TOKEN        = "eyJ4NXQiOiJZV0kxTTJZNE1qWTNOemsyTkRZeU5XTTRPV014TXpjek1UVmhNbU14T1RSa09ETXlOVEE0Tnc9PSIsImtpZCI6ImdhdGV3YXlfY2VydGlmaWNhdGVfYWxpYXMiLCJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9";    // <--- colle ton jeton (Bearer)
+
+    // Infos d’affichage
+    const CITY  = "Nice";      // pour le bandeau
+    const COUNTRY = "FR";
+    const TTL_MS  = 10 * 60 * 1000; // cache local 10 min
 
     const $ = (id) => document.getElementById(id);
 
     function showError(msg) {
-      const el = $('error');
-      el.textContent = msg;
-      el.style.display = 'block';
-    }
-
-    function setIcon(code) {
-      const url = `https://openweathermap.org/img/wn/${code}@2x.png`;
-      $('icon').src = url;
+      const el = $('error'); el.textContent = msg; el.style.display = 'block';
     }
 
     function formatTime(date) {
       return new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' }).format(date);
     }
 
-    async function getWeather() {
-      // Petit cache via localStorage pour limiter les appels
-      const cacheKey = `owm:${VILLE},${PAYS}:${UNITS}:${LANG}`;
+    function setIconByDescription(desc) {
+      // Petit mapping très simple (tu peux améliorer ensuite)
+      const d = (desc || '').toLowerCase();
+      let code = '01d';
+      if (d.includes('nuage')) code = '03d';
+      if (d.includes('pluie')) code = '09d';
+      if (d.includes('orage')) code = '11d';
+      if (d.includes('neige')) code = '13d';
+      const url = `https://openweathermap.org/img/wn/${code}@2x.png`;
+      $('icon').src = url;
+    }
+
+    // --- Utilitaires pour extraire des champs sans connaître exactement le schéma JSON ---
+    function deepFind(keys, obj) {
+      // Cherche récursivement la première valeur correspondant à une des clés (case-insensitive)
+      const wanted = new Set(keys.map(k => k.toLowerCase()));
+      try {
+        const stack = [obj];
+        while (stack.length) {
+          const cur = stack.pop();
+          if (!cur || typeof cur !== 'object') continue;
+          for (const [k, v] of Object.entries(cur)) {
+            if (wanted.has(k.toLowerCase())) {
+              // Si c'est un objet type { value: 12.3 }, prendre .value
+              if (v && typeof v === 'object' && 'value' in v) return v.value;
+              return v;
+            }
+            if (v && typeof v === 'object') stack.push(v);
+          }
+        }
+      } catch (_) {}
+      return undefined;
+    }
+
+    function extractFields(data) {
+      // Essaie différentes clés possibles (observations / forecast)
+      const temp = deepFind(['temp', 'temperature', 'T', 't2m'], data);
+      const feels = deepFind(['feels_like', 'apparent_temperature'], data);
+      const wind = deepFind(['wind', 'wind_speed', 'ff', 'vent'], data);
+      const humidity = deepFind(['humidity', 'rh', 'hum'], data);
+      const pressure = deepFind(['pressure', 'pmsl', 'press'], data);
+      const desc = deepFind(['description', 'weather', 'weather_text', 'phenomenon'], data);
+
+      return {
+        temp: typeof temp === 'number' ? temp : Number(temp),
+        feels_like: typeof feels === 'number' ? feels : Number(feels),
+        wind: typeof wind === 'number' ? wind : Number(wind),
+        humidity: typeof humidity === 'number' ? humidity : Number(humidity),
+        pressure: typeof pressure === 'number' ? pressure : Number(pressure),
+        desc: (typeof desc === 'string') ? desc : (Array.isArray(desc) ? String(desc[0]) : '—')
+      };
+    }
+
+    async function getData() {
+      const cacheKey = `mf:${ENDPOINT_URL}`;
       const cachedRaw = localStorage.getItem(cacheKey);
       if (cachedRaw) {
         try {
@@ -114,14 +159,17 @@
         } catch (_) {}
       }
 
-      if (!API_KEY || API_KEY === "TA_CLE_API") {
-        throw new Error("Ajoute ta clé API OpenWeather dans le code (API_KEY).");
+      if (!ENDPOINT_URL || ENDPOINT_URL === "PASTE_REQUEST_URL_ICI") {
+        throw new Error("Renseigne ENDPOINT_URL avec l'URL de requête copiée depuis la page de test de l'API Météo-France.");
+      }
+      if (!TOKEN || TOKEN === "PASTE_TOKEN_JWT_ICI") {
+        throw new Error("Renseigne TOKEN avec ton jeton JWT (Authorization: Bearer ...).");
       }
 
-      const q   = encodeURIComponent(`${VILLE},${PAYS}`);
-      const url = `https://api.openweathermap.org/data/2.5/weather?q=${q}&units=${UNITS}&lang=${LANG}&appid=${API_KEY}`;
-
-      const res = await fetch(url, { cache: 'no-store' });
+      const res = await fetch(ENDPOINT_URL, {
+        headers: { "Authorization": `Bearer ${TOKEN}` },
+        cache: 'no-store'
+      });
       if (!res.ok) {
         const text = await res.text();
         throw new Error(`Erreur API (${res.status}) : ${text}`);
@@ -132,28 +180,26 @@
     }
 
     function render(data) {
-      const temp = Math.round(data.main?.temp ?? 0);
-      const desc = data.weather?.[0]?.description ?? '—';
-      const icon = data.weather?.[0]?.icon ?? '01d';
+      const f = extractFields(data);
 
-      $('city').textContent    = `${data.name ?? VILLE}, ${PAYS}`;
-      $('temp').textContent    = `${temp}°C`;
-      $('desc').textContent    = desc;
-      $('wind').textContent    = `${Math.round(data.wind?.speed ?? 0)} m/s`;
-      $('humidity').textContent= `${data.main?.humidity ?? 0}%`;
-      $('pressure').textContent= `${data.main?.pressure ?? 0} hPa`;
+      $('city').textContent    = `${CITY}, ${COUNTRY}`;
+      $('temp').textContent    = Number.isFinite(f.temp) ? `${Math.round(f.temp)}°C` : '--°C';
+      $('desc').textContent    = f.desc || '—';
+      $('wind').textContent    = Number.isFinite(f.wind) ? `${Math.round(f.wind)} m/s` : '—';
+      $('humidity').textContent= Number.isFinite(f.humidity) ? `${Math.round(f.humidity)}%` : '—';
+      $('pressure').textContent= Number.isFinite(f.pressure) ? `${Math.round(f.pressure)} hPa` : '—';
       $('updated').textContent = `Maj ${formatTime(new Date())}`;
-      setIcon(icon);
+      setIconByDescription(f.desc);
     }
 
     (async () => {
       try {
-        const data = await getWeather();
+        const data = await get        const data = await getData();
         render(data);
       } catch (e) {
         console.error(e);
         showError(e.message || "Erreur météo");
       }
-       })();
+    })();
   </script>
 </body>
