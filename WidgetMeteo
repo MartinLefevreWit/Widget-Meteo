@@ -1,0 +1,159 @@
+
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Widget Météo</title>
+  <style>
+    :root {
+      --bg: #0f172a;       /* fond */
+      --panel: #111827;    /* panneau */
+      --text: #e5e7eb;     /* texte */
+      --muted: #9ca3af;    /* texte secondaire */
+      --accent: #38bdf8;   /* accent */
+      --radius: 14px;
+      --shadow: 0 10px 25px rgba(0,0,0,0.35);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Noto Sans", sans-serif; }
+    .wrapper { padding: 12px; }
+    .widget {
+      width: 100%; max-width: 380px; margin: 0 auto; border-radius: var(--radius);
+      background: linear-gradient(180deg, #0b1220 0%, #0f172a 100%);
+      border: 1px solid #1f2937; box-shadow: var(--shadow); overflow: hidden;
+    }
+    .header { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: rgba(56,189,248,.08); border-bottom: 1px solid #1f2937; }
+    .city { font-weight: 600; letter-spacing: .2px; }
+    .updated { margin-left: auto; font-size: 12px; color: var(--muted); }
+    .main { display: grid; grid-template-columns: 1fr auto; gap: 12px; padding: 16px; }
+    .temp { font-size: 42px; font-weight: 700; line-height: 1; }
+    .desc { margin-top: 4px; color: var(--muted); text-transform: capitalize; }
+    .icon { width: 72px; height: 72px; filter: drop-shadow(0 4px 8px rgba(0,0,0,.25)); }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 0 16px 16px 16px; }
+    .card { background: var(--panel); border: 1px solid #1f2937; border-radius: 12px; padding: 12px; text-align: center; }
+    .label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+    .value { font-weight: 600; }
+    .error { padding: 14px 16px; color: #ef4444; background: rgba(239,68,68,.08); border-top: 1px solid rgba(239,68,68,.3); font-size: 14px; display:none; }
+    /* Hauteur idéale dans l’iframe ~260–300px */
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="widget">
+      <div class="header">
+        <div class="city" id="city">—</div>
+        <div class="updated" id="updated">Maj …</div>
+      </div>
+
+      <div class="main">
+        <div>
+          <div class="temp" id="temp">--°C</div>
+          <div class="desc" id="desc">—</div>
+        </div>
+        <img class="icon" id="icon" alt="Icône météo" />
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <div class="label">Vent</div>
+          <div class="value" id="wind">—</div>
+        </div>
+        <div class="card">
+          <div class="label">Humidité</div>
+          <div class="value" id="humidity">—</div>
+        </div>
+        <div class="card">
+          <div class="label">Pression</div>
+          <div class="value" id="pressure">—</div>
+        </div>
+      </div>
+
+      <div class="error" id="error"></div>
+    </div>
+  </div>
+
+  <script>
+    /**
+     * 🔧 Paramètres simples à modifier ici
+     * - Mets TA CLÉ API OpenWeather
+     * - Change la ville si besoin
+     */
+    const API_KEY = "TA_CLE_API"; // <-- remplace par ta clé
+    const VILLE   = "Nice";
+    const PAYS    = "FR";
+    const UNITS   = "metric";     // "metric"=°C, "imperial"=°F
+    const LANG    = "fr";
+    const TTL_MS  = 10 * 60 * 1000; // cache local 10 minutes
+
+    const $ = (id) => document.getElementById(id);
+
+    function showError(msg) {
+      const el = $('error');
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+
+    function setIcon(code) {
+      const url = `https://openweathermap.org/img/wn/${code}@2x.png`;
+      $('icon').src = url;
+    }
+
+    function formatTime(date) {
+      return new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' }).format(date);
+    }
+
+    async function getWeather() {
+      // Petit cache via localStorage pour limiter les appels
+      const cacheKey = `owm:${VILLE},${PAYS}:${UNITS}:${LANG}`;
+      const cachedRaw = localStorage.getItem(cacheKey);
+      if (cachedRaw) {
+        try {
+          const cached = JSON.parse(cachedRaw);
+          if (Date.now() - cached.ts < TTL_MS) return cached.data;
+        } catch (_) {}
+      }
+
+      if (!API_KEY || API_KEY === "TA_CLE_API") {
+        throw new Error("Ajoute ta clé API OpenWeather dans le code (API_KEY).");
+      }
+
+      const q   = encodeURIComponent(`${VILLE},${PAYS}`);
+      const url = `https://api.openweathermap.org/data/2.5/weather?q=${q}&units=${UNITS}&lang=${LANG}&appid=${API_KEY}`;
+
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Erreur API (${res.status}) : ${text}`);
+      }
+      const data = await res.json();
+      localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data }));
+      return data;
+    }
+
+    function render(data) {
+      const temp = Math.round(data.main?.temp ?? 0);
+      const desc = data.weather?.[0]?.description ?? '—';
+      const icon = data.weather?.[0]?.icon ?? '01d';
+
+      $('city').textContent    = `${data.name ?? VILLE}, ${PAYS}`;
+      $('temp').textContent    = `${temp}°C`;
+      $('desc').textContent    = desc;
+      $('wind').textContent    = `${Math.round(data.wind?.speed ?? 0)} m/s`;
+      $('humidity').textContent= `${data.main?.humidity ?? 0}%`;
+      $('pressure').textContent= `${data.main?.pressure ?? 0} hPa`;
+      $('updated').textContent = `Maj ${formatTime(new Date())}`;
+      setIcon(icon);
+    }
+
+    (async () => {
+      try {
+        const data = await getWeather();
+        render(data);
+      } catch (e) {
+        console.error(e);
+        showError(e.message || "Erreur météo");
+      }
+       })();
+  </script>
+</body>
