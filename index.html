@@ -66,16 +66,21 @@
 
 <script>
 // ================== CONFIG ==================
-const API_KEY = "f5f9a18a44029213156c7571d5b0d3f0"; // Mets ta clé OpenWeather ici
+const API_KEY = "f5f9a18a44029213156c7571d5b0d3f0"; // ⚠️ Démo uniquement
 const LAT = 43.7009, LON = 7.2683;
 const W_ICON = (i) => `https://openweathermap.org/img/wn/${i}@2x.png`;
 
 // ================== CANVAS ==================
 const canvas = document.getElementById('bg');
 const ctx = canvas.getContext('2d');
+
 function resizeCanvas(){
-  canvas.width = canvas.offsetWidth;
-  canvas.height = canvas.offsetHeight;
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.offsetWidth;
+  const cssH = canvas.offsetHeight;
+  canvas.width = Math.floor(cssW * dpr);
+  canvas.height = Math.floor(cssH * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // mise à l’échelle pour dessiner en unités CSS
 }
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
@@ -85,7 +90,7 @@ let anim = { type:'none', t:0, clouds:[], rain:[] };
 function initClouds(count=6){
   anim.clouds=[];
   for(let i=0;i<count;i++){
-    anim.clouds.push({x:Math.random()*canvas.width,y:40+Math.random()*80,r:20+Math.random()*30,vx:0.3+Math.random()*0.5});
+    anim.clouds.push({x:Math.random()*canvas.offsetWidth,y:40+Math.random()*80,r:20+Math.random()*30,vx:0.3+Math.random()*0.5});
   }
 }
 function drawCloud(c){
@@ -96,7 +101,7 @@ function drawCloud(c){
 function initRain(count=80){
   anim.rain=[];
   for(let i=0;i<count;i++){
-    anim.rain.push({x:Math.random()*canvas.width,y:Math.random()*canvas.height,len:6+Math.random()*8,vy:3+Math.random()*3});
+    anim.rain.push({x:Math.random()*canvas.offsetWidth,y:Math.random()*canvas.offsetHeight,len:6+Math.random()*8,vy:3+Math.random()*3});
   }
 }
 function drawRain(){
@@ -108,14 +113,14 @@ function drawRain(){
     ctx.lineTo(d.x,d.y+d.len);
     ctx.stroke();
     d.y+=d.vy;
-    if(d.y>canvas.height){ d.y=-d.len; d.x=Math.random()*canvas.width; }
+    if(d.y>canvas.offsetHeight){ d.y=-d.len; d.x=Math.random()*canvas.offsetWidth; }
   }
 }
 function drawSun(){
   ctx.fillStyle='#87CEEB';
-  ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillRect(0,0,canvas.offsetWidth,canvas.offsetHeight);
   ctx.beginPath();
-  ctx.arc(canvas.width/2,canvas.height/2,40,0,Math.PI*2);
+  ctx.arc(canvas.offsetWidth/2,canvas.offsetHeight/2,40,0,Math.PI*2);
   ctx.fillStyle='#FFD700';
   ctx.fill();
 }
@@ -128,19 +133,20 @@ function setScene(kind){
 
 function loop(){
   anim.t++;
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  if(anim.type==='clear'){ drawSun(); }
-  else if(anim.type==='clouds'){
-    ctx.fillStyle='#708090'; ctx.fillRect(0,0,canvas.width,canvas.height);
-    for(const c of anim.clouds){ drawCloud(c); c.x+=c.vx; if(c.x-c.r>canvas.width)c.x=-c.r; }
+  ctx.clearRect(0,0,canvas.offsetWidth,canvas.offsetHeight);
+  if(anim.type==='clear'){ 
+    drawSun(); 
+  } else if(anim.type==='clouds'){
+    ctx.fillStyle='#708090'; ctx.fillRect(0,0,canvas.offsetWidth,canvas.offsetHeight);
+    for(const c of anim.clouds){ drawCloud(c); c.x+=c.vx; if(c.x-c.r>canvas.offsetWidth)c.x=-c.r; }
   } else if(['rain','drizzle','thunder'].includes(anim.type)){
-    ctx.fillStyle='#2F4F4F'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle='#2F4F4F'; ctx.fillRect(0,0,canvas.offsetWidth,canvas.offsetHeight);
     drawRain();
-    if(anim.type==='thunder'&&(anim.t%120)<6){ ctx.fillStyle='rgba(255,255,255,0.3)'; ctx.fillRect(0,0,canvas.width,canvas.height); }
+    if(anim.type==='thunder'&&(anim.t%120)<6){ ctx.fillStyle='rgba(255,255,255,0.3)'; ctx.fillRect(0,0,canvas.offsetWidth,canvas.offsetHeight); }
   } else if(anim.type==='snow'){
-    ctx.fillStyle='#b9d6f2'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle='#b9d6f2'; ctx.fillRect(0,0,canvas.offsetWidth,canvas.offsetHeight);
   } else {
-    ctx.fillStyle='#6b7280'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle='#6b7280'; ctx.fillRect(0,0,canvas.offsetWidth,canvas.offsetHeight);
   }
   requestAnimationFrame(loop);
 }
@@ -149,32 +155,53 @@ requestAnimationFrame(loop);
 // ================== WIDGET ==================
 function $(id){ return document.getElementById(id); }
 
-async function getWeather(){
-  const url=`https://api.openweathermap.org/data/2.5/weather?lat=${LAT}&lon=${LON}&units=metric&lang=fr&appid=${API_KEY}`;
-  const res=await fetch(url);
-  const data=await res.json();
-  if(data.cod!==200){ alert("Erreur API : "+data.message); return; }
-  const weather=data.weather[0]||{};
-  const main=weather.main||''; const desc=weather.description||'—';
-
-  $('temp').textContent=`${Math.round(data.main.temp)}°C`;
-  $('desc').textContent=desc;
-  $('wind').textContent=`${Math.round((data.wind.speed||0)*3.6)} km/h`;
-  $('humidity').textContent=`${data.main.humidity}%`;
-  $('pressure').textContent=`${data.main.pressure} hPa`;
-  $('icon').src=W_ICON(weather.icon||'01d');
-  $('updated').textContent=`Maj ${new Intl.DateTimeFormat('fr-FR',{hour:'2-digit',minute:'2-digit'}).format(new Date())}`;
-
-  const m=main.toLowerCase();
-  if(m.includes('clear'))setScene('clear');
-  else if(m.includes('cloud'))setScene('clouds');
-  else if(m.includes('rain'))setScene('rain');
-  else if(m.includes('drizzle'))setScene('drizzle');
-  else if(m.includes('thunder'))setScene('thunder');
-  else if(m.includes('snow'))setScene('snow');
-  else setScene('mist');
+function toScene(main){
+  const m = (main||'').toLowerCase();
+  if(m==='clear') return 'clear';
+  if(m==='clouds') return 'clouds';
+  if(m==='rain') return 'rain';
+  if(m==='drizzle') return 'drizzle';
+  if(m==='thunderstorm') return 'thunder';
+  if(m==='snow') return 'snow';
+  return 'mist';
 }
 
-getgetWeather();
+async function getWeather(){
+  const url=`https://api.openweathermap.org/data/2.5/weather?lat=${LAT}&lon=${LON}&units=metric&lang=fr&appid=${API_KEY}`;
+  try{
+    const res = await fetch(url, { cache: 'no-store' });
+    if(!res.ok){ throw new Error(`HTTP ${res.status}`); }
+    const data = await res.json();
+    if(data.cod && data.cod !== 200){ throw new Error(data.message || `Code ${data.cod}`); }
+
+    const weather = (data.weather && data.weather[0]) || {};
+    const main = weather.main || '';
+    const desc = weather.description || '—';
+
+    $('temp').textContent = `${Math.round(data.main.temp)}°C`;
+    $('desc').textContent = desc;
+    $('wind').textContent = `${Math.round((data.wind.speed||0)*3.6)} km/h`;
+    $('humidity').textContent = `${data.main.humidity}%`;
+    $('pressure').textContent = `${data.main.pressure} hPa`;
+
+    const iconCode = weather.icon || '01d';
+    const iconEl = $('icon');
+    iconEl.src = W_ICON(iconCode);
+    iconEl.alt = `Conditions : ${desc}`;
+    iconEl.onerror = () => { iconEl.src = W_ICON('01d'); };
+
+    $('updated').textContent = `Maj ${new Intl.DateTimeFormat('fr-FR',{hour:'2-digit',minute:'2-digit'}).format(new Date())}`;
+
+    setScene(toScene(main));
+  } catch(e){
+    console.error(e);
+    $('updated').textContent = `Erreur de mise à jour`;
+    $('desc').textContent = `Impossible de récupérer la météo`;
+  }
+}
+
+// ✅ Corrige la typo ici
+getWeather();
 </script>
 </body>
+</html
