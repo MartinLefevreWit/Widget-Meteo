@@ -12,16 +12,16 @@
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Noto Sans", sans-serif;
     overflow:hidden;
   }
-  /* Canvas derrière le widget mais visible */
+  /* Canvas visible derrière le widget */
   canvas {
     position:fixed; top:0; left:0;
     width:100vw; height:100vh;
     z-index:0;
-    pointer-events:none;
+    pointer-events:none; /* ne bloque pas les clics */
   }
   .wrapper {
     display:grid; place-items:center;
-    min-height:100vh; position:relative; z-index:1;
+    min-height:100vh; position:relative; z-index:1; /* le widget au-dessus */
   }
   .widget {
     width:100%; max-width:380px;
@@ -73,8 +73,8 @@
 
 <script>
 // ================== CONFIG ==================
-const API_KEY = "f5f9a18a44029213156c7571d5b0d3f0"; // <-- ta clé OpenWeather (clé seule)
-const LAT = 43.7009, LON = 7.2683;                  // Nice
+const API_KEY = "f5f9a18a44029213156c7571d5b0d3f0";                    // <-- ta clé OpenWeather (clé seule)
+const LAT = 43.7009, LON = 7.2683;               // Nice
 const W_ICON = (i) => `https://openweathermap.org/img/wn/${i}@2x.png`;
 
 // ================== CANVAS SETUP ==================
@@ -98,12 +98,13 @@ function initClouds(count=8){
     anim.clouds.push({
       x: Math.random()*canvas.width,
       y: 50 + Math.random()*(H*0.5),
-      r: 40 + Math.random()*60,
-      vx: 0.2 + Math.random()*0.6
+      r: 40 + Math.random()*60,          // taille
+      vx: 0.2 + Math.random()*0.6        // vitesse horizontale
     });
   }
 }
 function drawCloud(c){
+  // cumulus simple en 3 cercles
   ctx.fillStyle = 'rgba(220,220,220,0.95)';
   ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, Math.PI*2); ctx.fill();
   ctx.beginPath(); ctx.arc(c.x + c.r*0.8, c.y + c.r*0.2, c.r*0.8, 0, Math.PI*2); ctx.fill();
@@ -137,12 +138,14 @@ function drawRain(){
 
 // ---- Soleil ----
 function drawSun(){
+  // ciel bleu
   const g = ctx.createLinearGradient(0,0,0,canvas.height);
   g.addColorStop(0, '#7ec8ff');
   g.addColorStop(1, '#89b6ff');
   ctx.fillStyle = g;
   ctx.fillRect(0,0,canvas.width,canvas.height);
 
+  // soleil + halo léger animé
   const cx = canvas.width*0.75;
   const cy = canvas.height*0.25;
   const r  = 80;
@@ -164,8 +167,11 @@ function drawSun(){
 // ---- Scène selon météo ----
 function setScene(kind){
   anim.type = kind;
-  if (kind === 'clouds')       initClouds();
-  else if (['rain','drizzle','thunder'].includes(kind)) initRain();
+  if (kind === 'clouds') {
+    initClouds();
+  } else if (['rain','drizzle','thunder'].includes(kind)) {
+    initRain();
+  }
 }
 
 // ---- Boucle d'animation ----
@@ -176,30 +182,39 @@ function loop(){
   if (anim.type === 'clear') {
     drawSun();
   } else if (anim.type === 'clouds') {
+    // fond gris doux
     const g = ctx.createLinearGradient(0,0,0,canvas.height);
-    g.addColorStop(0,'#738a9b'); g.addColorStop(1,'#5c7180');
+    g.addColorStop(0,'#738a9b');
+    g.addColorStop(1,'#5c7180');
     ctx.fillStyle = g; ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    // nuages qui se déplacent
     for (const c of anim.clouds){
       drawCloud(c);
       c.x += c.vx;
       if (c.x - c.r > canvas.width) c.x = -c.r;
     }
   } else if (anim.type === 'rain' || anim.type === 'drizzle' || anim.type === 'thunder') {
+    // fond sombre
     ctx.fillStyle = '#2F4F4F';
     ctx.fillRect(0,0,canvas.width,canvas.height);
     drawRain();
     if (anim.type === 'thunder' && (anim.t % 180) < 6) {
+      // flash orageux très bref
       ctx.fillStyle = 'rgba(255,255,255,0.25)';
       ctx.fillRect(0,0,canvas.width,canvas.height);
     }
   } else if (anim.type === 'snow') {
+    // fond froid (flocons à ajouter si besoin)
     const g = ctx.createLinearGradient(0,0,0,canvas.height);
-    g.addColorStop(0,'#b9d6f2'); g.addColorStop(1,'#8fb7e8');
+    g.addColorStop(0,'#b9d6f2');
+    g.addColorStop(1,'#8fb7e8');
     ctx.fillStyle = g; ctx.fillRect(0,0,canvas.width,canvas.height);
-    // (flocons à ajouter si besoin)
   } else {
+    // brouillard / autres
     const g = ctx.createLinearGradient(0,0,0,canvas.height);
-    g.addColorStop(0,'#9ca3af'); g.addColorStop(1,'#6b7280');
+    g.addColorStop(0,'#9ca3af');
+    g.addColorStop(1,'#6b7280');
     ctx.fillStyle = g; ctx.fillRect(0,0,canvas.width,canvas.height);
   }
 
@@ -239,18 +254,20 @@ async function getWeather(){
   $('icon').alt              = `Météo : ${desc}`;
   $('updated').textContent   = `Maj ${new Intl.DateTimeFormat('fr-FR',{hour:'2-digit',minute:'2-digit'}).format(new Date())}`;
 
-  // ✅ Choix correct de la scène
+  // ✅ Sélection de la scène (bloc corrigé)
   const m = main.toLowerCase();
   if (m.includes('clear'))        setScene('clear');
   else if (m.includes('cloud'))   setScene('clouds');
   else if (m.includes('rain'))    setScene('rain');
-  else  else if (m.includes('drizzle')) setScene('drizzle');
+  else if (m.includes('drizzle')) setScene('drizzle');
   else if (m.includes('thunder')) setScene('thunder');
   else if (m.includes('snow'))    setScene('snow');
   else                            setScene('mist');
 }
 
-// Lancer
+// Lancement
 getWeather();
+// (optionnel) rafraîchit toutes les 15 minutes
+// setInterval(get// setInterval(getWeather, 15 * 60 * 1000);
 </script>
 </body>
