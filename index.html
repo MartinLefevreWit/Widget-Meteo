@@ -4,24 +4,14 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Widget Météo – OpenWeather (fond animé)</title>
+<title>Widget Météo – OpenWeather (canvas intégré)</title>
 <style>
   html, body {
     margin:0; padding:0;
     background:#0f172a; color:#e5e7eb;
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Noto Sans", sans-serif;
-    overflow:hidden;
-  }
-  /* Canvas visible derrière le widget */
-  canvas {
-    position:fixed; top:0; left:0;
-    width:100vw; height:100vh;
-    z-index:0;
-    pointer-events:none; /* ne bloque pas les clics */
-  }
-  .wrapper {
+    font-family: system-ui, sans-serif;
     display:grid; place-items:center;
-    min-height:100vh; position:relative; z-index:1; /* le widget au-dessus */
+    min-height:100vh;
   }
   .widget {
     width:100%; max-width:380px;
@@ -35,6 +25,8 @@
   .header { display:flex; justify-content:space-between; padding:14px 16px; background:rgba(56,189,248,.08); }
   .city { font-weight:600; }
   .updated { font-size:12px; color:#9ca3af; }
+  .canvas-box { width:100%; height:180px; position:relative; }
+  canvas { width:100%; height:100%; display:block; }
   .main { display:grid; grid-template-columns:1fr auto; gap:12px; padding:16px; }
   .temp { font-size:42px; font-weight:700; }
   .desc { color:#9ca3af; text-transform:capitalize; }
@@ -46,178 +38,110 @@
 </style>
 </head>
 <body>
-<canvas id="bg"></canvas>
+<div class="widget">
+  <div class="header">
+    <div class="city" id="city">Nice, FR</div>
+    <div class="updated" id="updated">—</div>
+  </div>
 
-<div class="wrapper">
-  <div class="widget" role="region" aria-label="Widget météo">
-    <div class="header">
-      <div class="city" id="city">Nice, FR</div>
-      <div class="updated" id="updated">—</div>
-    </div>
+  <!-- Canvas intégré -->
+  <div class="canvas-box">
+    <canvas id="bg"></canvas>
+  </div>
 
-    <div class="main">
-      <div>
-        <div class="temp" id="temp">--°C</div>
-        <div class="desc" id="desc">—</div>
-      </div>
-      <img class="icon" id="icon" alt="Icône météo" />
+  <div class="main">
+    <div>
+      <div class="temp" id="temp">--°C</div>
+      <div class="desc" id="desc">—</div>
     </div>
+    <img class="icon" id="icon" alt="Icône météo" />
+  </div>
 
-    <div class="grid" aria-label="Détails météo">
-      <div class="card"><div class="label">Vent</div><div class="value" id="wind">—</div></div>
-      <div class="card"><div class="label">Humidité</div><div class="value" id="humidity">—</div></div>
-      <div class="card"><div class="label">Pression</div><div class="value" id="pressure">—</div></div>
-    </div>
+  <div class="grid">
+    <div class="card"><div class="label">Vent</div><div class="value" id="wind">—</div></div>
+    <div class="card"><div class="label">Humidité</div><div class="value" id="humidity">—</div></div>
+    <div class="card"><div class="label">Pression</div><div class="value" id="pressure">—</div></div>
   </div>
 </div>
 
 <script>
 // ================== CONFIG ==================
-const API_KEY = "f5f9a18a44029213156c7571d5b0d3f0";                    // <-- ta clé OpenWeather (clé seule)
-const LAT = 43.7009, LON = 7.2683;               // Nice
+const API_KEY = "f5f9a18a44029213156c7571d5b0d3f0"; // Mets ta clé OpenWeather ici
+const LAT = 43.7009, LON = 7.2683;
 const W_ICON = (i) => `https://openweathermap.org/img/wn/${i}@2x.png`;
 
-// ================== CANVAS SETUP ==================
+// ================== CANVAS ==================
 const canvas = document.getElementById('bg');
 const ctx = canvas.getContext('2d');
 function resizeCanvas(){
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
+  canvas.width = canvas.offsetWidth;
+  canvas.height = canvas.offsetHeight;
 }
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
 
-// ================== ANIM STATE ==================
-let anim = { type: 'none', t: 0, clouds: [], rain: [] };
+let anim = { type:'none', t:0, clouds:[], rain:[] };
 
-// ---- Nuages en mouvement ----
-function initClouds(count=8){
-  anim.clouds = [];
-  const H = canvas.height;
-  for (let i=0;i<count;i++){
-    anim.clouds.push({
-      x: Math.random()*canvas.width,
-      y: 50 + Math.random()*(H*0.5),
-      r: 40 + Math.random()*60,          // taille
-      vx: 0.2 + Math.random()*0.6        // vitesse horizontale
-    });
+function initClouds(count=6){
+  anim.clouds=[];
+  for(let i=0;i<count;i++){
+    anim.clouds.push({x:Math.random()*canvas.width,y:40+Math.random()*80,r:20+Math.random()*30,vx:0.3+Math.random()*0.5});
   }
 }
 function drawCloud(c){
-  // cumulus simple en 3 cercles
-  ctx.fillStyle = 'rgba(220,220,220,0.95)';
-  ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(c.x + c.r*0.8, c.y + c.r*0.2, c.r*0.8, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(c.x - c.r*0.7, c.y + c.r*0.3, c.r*0.6, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle='rgba(220,220,220,0.95)';
+  ctx.beginPath(); ctx.arc(c.x,c.y,c.r,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(c.x+c.r*0.6,c.y+c.r*0.2,c.r*0.7,0,Math.PI*2); ctx.fill();
 }
-
-// ---- Pluie ----
-function initRain(count=160){
-  anim.rain = [];
-  for (let i=0;i<count;i++){
-    anim.rain.push({
-      x: Math.random()*canvas.width,
-      y: Math.random()*canvas.height,
-      len: 8 + Math.random()*12,
-      vy: 4 + Math.random()*5
-    });
+function initRain(count=80){
+  anim.rain=[];
+  for(let i=0;i<count;i++){
+    anim.rain.push({x:Math.random()*canvas.width,y:Math.random()*canvas.height,len:6+Math.random()*8,vy:3+Math.random()*3});
   }
 }
 function drawRain(){
-  ctx.strokeStyle = '#00BFFF';
-  ctx.lineWidth = 1;
-  for (const d of anim.rain){
+  ctx.strokeStyle='#00BFFF';
+  ctx.lineWidth=1;
+  for(const d of anim.rain){
     ctx.beginPath();
-    ctx.moveTo(d.x, d.y);
-    ctx.lineTo(d.x, d.y + d.len);
+    ctx.moveTo(d.x,d.y);
+    ctx.lineTo(d.x,d.y+d.len);
     ctx.stroke();
-    d.y += d.vy;
-    if (d.y > canvas.height) { d.y = -d.len; d.x = Math.random()*canvas.width; }
+    d.y+=d.vy;
+    if(d.y>canvas.height){ d.y=-d.len; d.x=Math.random()*canvas.width; }
   }
 }
-
-// ---- Soleil ----
 function drawSun(){
-  // ciel bleu
-  const g = ctx.createLinearGradient(0,0,0,canvas.height);
-  g.addColorStop(0, '#7ec8ff');
-  g.addColorStop(1, '#89b6ff');
-  ctx.fillStyle = g;
+  ctx.fillStyle='#87CEEB';
   ctx.fillRect(0,0,canvas.width,canvas.height);
-
-  // soleil + halo léger animé
-  const cx = canvas.width*0.75;
-  const cy = canvas.height*0.25;
-  const r  = 80;
-
-  const halo = ctx.createRadialGradient(cx, cy, r*0.7, cx, cy, r*1.8);
-  halo.addColorStop(0, 'rgba(255,215,0,0.35)');
-  halo.addColorStop(1, 'rgba(255,215,0,0)');
-  ctx.fillStyle = halo;
   ctx.beginPath();
-  ctx.arc(cx, cy, r*1.8 + Math.sin(anim.t*0.02)*8, 0, Math.PI*2);
-  ctx.fill();
-
-  ctx.fillStyle = '#FFD700';
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, Math.PI*2);
+  ctx.arc(canvas.width/2,canvas.height/2,40,0,Math.PI*2);
+  ctx.fillStyle='#FFD700';
   ctx.fill();
 }
 
-// ---- Scène selon météo ----
 function setScene(kind){
-  anim.type = kind;
-  if (kind === 'clouds') {
-    initClouds();
-  } else if (['rain','drizzle','thunder'].includes(kind)) {
-    initRain();
-  }
+  anim.type=kind;
+  if(kind==='clouds')initClouds();
+  else if(['rain','drizzle','thunder'].includes(kind))initRain();
 }
 
-// ---- Boucle d'animation ----
 function loop(){
   anim.t++;
   ctx.clearRect(0,0,canvas.width,canvas.height);
-
-  if (anim.type === 'clear') {
-    drawSun();
-  } else if (anim.type === 'clouds') {
-    // fond gris doux
-    const g = ctx.createLinearGradient(0,0,0,canvas.height);
-    g.addColorStop(0,'#738a9b');
-    g.addColorStop(1,'#5c7180');
-    ctx.fillStyle = g; ctx.fillRect(0,0,canvas.width,canvas.height);
-
-    // nuages qui se déplacent
-    for (const c of anim.clouds){
-      drawCloud(c);
-      c.x += c.vx;
-      if (c.x - c.r > canvas.width) c.x = -c.r;
-    }
-  } else if (anim.type === 'rain' || anim.type === 'drizzle' || anim.type === 'thunder') {
-    // fond sombre
-    ctx.fillStyle = '#2F4F4F';
-    ctx.fillRect(0,0,canvas.width,canvas.height);
+  if(anim.type==='clear'){ drawSun(); }
+  else if(anim.type==='clouds'){
+    ctx.fillStyle='#708090'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    for(const c of anim.clouds){ drawCloud(c); c.x+=c.vx; if(c.x-c.r>canvas.width)c.x=-c.r; }
+  } else if(['rain','drizzle','thunder'].includes(anim.type)){
+    ctx.fillStyle='#2F4F4F'; ctx.fillRect(0,0,canvas.width,canvas.height);
     drawRain();
-    if (anim.type === 'thunder' && (anim.t % 180) < 6) {
-      // flash orageux très bref
-      ctx.fillStyle = 'rgba(255,255,255,0.25)';
-      ctx.fillRect(0,0,canvas.width,canvas.height);
-    }
-  } else if (anim.type === 'snow') {
-    // fond froid (flocons à ajouter si besoin)
-    const g = ctx.createLinearGradient(0,0,0,canvas.height);
-    g.addColorStop(0,'#b9d6f2');
-    g.addColorStop(1,'#8fb7e8');
-    ctx.fillStyle = g; ctx.fillRect(0,0,canvas.width,canvas.height);
+    if(anim.type==='thunder'&&(anim.t%120)<6){ ctx.fillStyle='rgba(255,255,255,0.3)'; ctx.fillRect(0,0,canvas.width,canvas.height); }
+  } else if(anim.type==='snow'){
+    ctx.fillStyle='#b9d6f2'; ctx.fillRect(0,0,canvas.width,canvas.height);
   } else {
-    // brouillard / autres
-    const g = ctx.createLinearGradient(0,0,0,canvas.height);
-    g.addColorStop(0,'#9ca3af');
-    g.addColorStop(1,'#6b7280');
-    ctx.fillStyle = g; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle='#6b7280'; ctx.fillRect(0,0,canvas.width,canvas.height);
   }
-
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
@@ -226,48 +150,31 @@ requestAnimationFrame(loop);
 function $(id){ return document.getElementById(id); }
 
 async function getWeather(){
-  const url = new URL("https://api.openweathermap.org/data/2.5/weather");
-  url.searchParams.set("lat", LAT);
-  url.searchParams.set("lon", LON);
-  url.searchParams.set("units", "metric");
-  url.searchParams.set("lang", "fr");
-  url.searchParams.set("appid", API_KEY);
+  const url=`https://api.openweathermap.org/data/2.5/weather?lat=${LAT}&lon=${LON}&units=metric&lang=fr&appid=${API_KEY}`;
+  const res=await fetch(url);
+  const data=await res.json();
+  if(data.cod!==200){ alert("Erreur API : "+data.message); return; }
+  const weather=data.weather[0]||{};
+  const main=weather.main||''; const desc=weather.description||'—';
 
-  const res = await fetch(url.toString(), { cache:'no-store' });
-  const data = await res.json();
-  if (data.cod !== 200) {
-    alert("Erreur API : " + (data.message || "réponse invalide"));
-    return;
-  }
+  $('temp').textContent=`${Math.round(data.main.temp)}°C`;
+  $('desc').textContent=desc;
+  $('wind').textContent=`${Math.round((data.wind.speed||0)*3.6)} km/h`;
+  $('humidity').textContent=`${data.main.humidity}%`;
+  $('pressure').textContent=`${data.main.pressure} hPa`;
+  $('icon').src=W_ICON(weather.icon||'01d');
+  $('updated').textContent=`Maj ${new Intl.DateTimeFormat('fr-FR',{hour:'2-digit',minute:'2-digit'}).format(new Date())}`;
 
-  const weather = data.weather?.[0] || {};
-  const main    = weather.main || '';          // ex: "Clouds", "Rain", "Clear"...
-  const desc    = weather.description || '—';
-
-  $('city').textContent      = "Nice, FR";
-  $('temp').textContent      = `${Math.round(data.main.temp)}°C`;
-  $('desc').textContent      = desc;
-  $('wind').textContent      = `${Math.round((data.wind.speed || 0)*3.6)} km/h`;
-  $('humidity').textContent  = `${data.main.humidity}%`;
-  $('pressure').textContent  = `${data.main.pressure} hPa`;
-  $('icon').src              = W_ICON(weather.icon || '01d');
-  $('icon').alt              = `Météo : ${desc}`;
-  $('updated').textContent   = `Maj ${new Intl.DateTimeFormat('fr-FR',{hour:'2-digit',minute:'2-digit'}).format(new Date())}`;
-
-  // ✅ Sélection de la scène (bloc corrigé)
-  const m = main.toLowerCase();
-  if (m.includes('clear'))        setScene('clear');
-  else if (m.includes('cloud'))   setScene('clouds');
-  else if (m.includes('rain'))    setScene('rain');
-  else if (m.includes('drizzle')) setScene('drizzle');
-  else if (m.includes('thunder')) setScene('thunder');
-  else if (m.includes('snow'))    setScene('snow');
-  else                            setScene('mist');
+  const m=main.toLowerCase();
+  if(m.includes('clear'))setScene('clear');
+  else if(m.includes('cloud'))setScene('clouds');
+  else if(m.includes('rain'))setScene('rain');
+  else if(m.includes('drizzle'))setScene('drizzle');
+  else if(m.includes('thunder'))setScene('thunder');
+  else if(m.includes('snow'))setScene('snow');
+  else setScene('mist');
 }
 
-// Lancement
-getWeather();
-// (optionnel) rafraîchit toutes les 15 minutes
-// setInterval(get// setInterval(getWeather, 15 * 60 * 1000);
+getgetWeather();
 </script>
 </body>
