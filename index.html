@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Widget Météo – Sélecteur de villes (Paris, Lyon, Marseille, Nice, Bordeaux)</title>
+<title>Widget Météo – Nuages réalistes + Beau temps animé</title>
 <style>
   html, body {
     margin:0; padding:0;
@@ -13,7 +13,6 @@
     display:grid; place-items:center;
     min-height:100vh;
   }
-
   .widget {
     position: relative;
     width:100%; max-width:380px;
@@ -25,57 +24,29 @@
     backdrop-filter: blur(6px);
     box-sizing: border-box;
   }
-
-  /* Barre de sélection de villes */
-  .cities {
-    display:flex; gap:8px; flex-wrap:wrap;
-    padding:10px 12px;
-    background:rgba(56,189,248,.08);
-    border-bottom:1px solid #1f2937;
-  }
-  .chip {
-    appearance:none; border:0; cursor:pointer;
-    padding:6px 10px; border-radius:999px;
-    background:rgba(255,255,255,0.10);
-    color:#e5e7eb; font-size:13px; font-weight:600;
-    transition:background .2s ease, transform .1s ease;
-  }
-  .chip:hover { background:rgba(255,255,255,0.18); }
-  .chip.active { background:#22d3ee; color:#0f172a; }
-  .chip:active { transform:scale(0.98); }
-
-  /* Canvas couvre toute la tuile */
   .bg-canvas {
     position:absolute; inset:0; z-index:0;
     width:100%; height:100%; display:block;
     pointer-events:none;
     backface-visibility: hidden;
   }
-
-  /* Contenu par-dessus */
   .header, .main, .grid { position: relative; z-index: 1; }
-
   .header {
     display:flex; justify-content:space-between; align-items:center;
-    padding:12px 14px;
+    padding:14px 16px;
     background:rgba(56,189,248,.08);
   }
-  .city { font-weight:600; color:#1f2937; text-shadow:0 1px 2px rgba(0,0,0,0.3); }
-  .updated { font-size:12px; color:#1f2937; text-shadow:0 1px 2px rgba(0,0,0,0.3); }
+
+  /* Lisibilité renforcée */
+  .city { font-weight:600; color:#1f2937; text-shadow:0 1px 3px rgba(0,0,0,0.4); }
+  .updated { font-size:12px; color:#1f2937; text-shadow:0 1px 3px rgba(0,0,0,0.4); }
 
   .main {
     display:grid; grid-template-columns:1fr auto; gap:12px;
     padding:16px; min-height:160px;
   }
-  .temp {
-    font-size:42px; font-weight:700; opacity:.95;
-    color:#1f2937; text-shadow:0 1px 3px rgba(0,0,0,0.4);
-  }
-  .desc {
-    font-size:18px; font-weight:500; opacity:.95;
-    color:#1f2937; text-shadow:0 1px 3px rgba(0,0,0,0.4);
-    text-transform:capitalize;
-  }
+  .temp { font-size:42px; font-weight:700; opacity:.95; color:#1f2937; text-shadow:0 1px 3px rgba(0,0,0,0.4); }
+  .desc { font-size:18px; font-weight:500; opacity:.95; color:#1f2937; text-shadow:0 1px 3px rgba(0,0,0,0.4); text-transform:capitalize; }
   .icon { width:72px; height:72px; }
 
   .grid {
@@ -87,30 +58,19 @@
     border-radius:12px; padding:12px; text-align:center;
   }
   .label { font-size:12px; color:#9ca3af; margin-bottom:6px; }
-  .value { font-weight:700; color:#1f2937; text-shadow:0 1px 2px rgba(0,0,0,0.3); }
+  /* Valeurs un peu plus claires (vs #1f2937) */
+  .value { font-weight:700; color:#334155; text-shadow:0 1px 2px rgba(0,0,0,0.3); }
 </style>
 </head>
 <body>
 <div class="widget" id="widget">
-  <!-- Sélecteur de villes -->
-  <div class="cities" id="cities">
-    <button class="chip" data-city="paris">Paris</button>
-    <button class="chip" data-city="lyon">Lyon</button>
-    <button class="chip" data-city="marseille">Marseille</button>
-    <button class="chip chip-default active" data-city="nice">Nice</button>
-    <button class="chip" data-city="bordeaux">Bordeaux</button>
-  </div>
-
-  <!-- Canvas fond -->
   <canvas id="bg" class="bg-canvas"></canvas>
 
-  <!-- En-tête -->
   <div class="header">
     <div class="city" id="city">Nice, FR</div>
     <div class="updated" id="updated">—</div>
   </div>
 
-  <!-- Bloc principal -->
   <div class="main">
     <div>
       <div class="temp" id="temp">--°C</div>
@@ -119,7 +79,6 @@
     <img class="icon" id="icon" alt="Icône météo" />
   </div>
 
-  <!-- Infos -->
   <div class="grid">
     <div class="card"><div class="label">Vent</div><div class="value" id="wind">—</div></div>
     <div class="card"><div class="label">Humidité</div><div class="value" id="humidity">—</div></div>
@@ -128,27 +87,12 @@
 </div>
 
 <script>
-/* ================== CONFIG ================== */
+// ================== CONFIG ==================
 const API_KEY = "f5f9a18a44029213156c7571d5b0d3f0"; // ⚠️ Démo — ne pas exposer en prod
+const LAT = 43.7009358, LON = 7.2683912;
 const W_ICON = (i) => `https://openweathermap.org/img/wn/${i}@2x.png`;
 
-// Cartographie des villes → coordonnées
-const CITY_COORDS = {
-  paris:     { name: "Paris, FR",     lat: 48.8566, lon:  2.3522 },
-  lyon:      { name: "Lyon, FR",      lat: 45.7640, lon:  4.8357 },
-  marseille: { name: "Marseille, FR", lat: 43.2965, lon:  5.3698 },
-  nice:      { name: "Nice, FR",      lat: 43.7009, lon:  7.2683 },
-  bordeaux:  { name: "Bordeaux, FR",  lat: 44.8378, lon: -0.5792 }
-};
-
-// Ville courante (initialisée sur Nice ou depuis stockage)
-let CURRENT = (() => {
-  const savedKey = localStorage.getItem('cityKey');
-  const key = savedKey && CITY_COORDS[savedKey] ? savedKey : 'nice';
-  return { key, ...CITY_COORDS[key] };
-})();
-
-/* ================== CANVAS ================== */
+// ================== CANVAS ==================
 const host = document.getElementById('widget');
 const canvas = document.getElementById('bg');
 const ctx = canvas.getContext('2d');
@@ -167,7 +111,7 @@ resizeCanvas();
 new ResizeObserver(resizeCanvas).observe(host);
 window.addEventListener('resize', resizeCanvas);
 
-/* ================== ANIM STATE ================== */
+// ================== ANIM STATE ==================
 let anim = {
   type:'none',
   t:0,
@@ -176,7 +120,7 @@ let anim = {
   wind:{ speed:0, deg:0 }
 };
 
-/* ================== OUTILS ================== */
+// ================== OUTILS ==================
 function $(id){ return document.getElementById(id); }
 function paintSky(colorA='#89c7ea', colorB='#79b5d8'){
   const g = ctx.createLinearGradient(0,0,0,cssH);
@@ -186,17 +130,169 @@ function paintSky(colorA='#89c7ea', colorB='#79b5d8'){
   ctx.fillRect(0,0,cssW,cssH);
 }
 
-/* ===== Nuages réalistes (version volumes doux) — résumée pour concision ===== */
-/* -> garde ta version précédente si tu préfères ; ici on laisse simple */
-function drawClouds(){
-  // ciel nuageux doux “placeholder”: gradient + voile
-  const g = ctx.createLinearGradient(0,0,0,cssH);
-  g.addColorStop(0, 'rgba(255,255,255,0.35)');
-  g.addColorStop(1, 'rgba(255,255,255,0.15)');
-  ctx.fillStyle = g; ctx.fillRect(0,0,cssW,cssH);
+// ================== BRUIT (Perlin-like) + fBm ==================
+const Noise = (() => {
+  const perm = new Uint8Array(512);
+  let seed = 20251222;
+  function reseed(s){
+    seed = s>>>0;
+    for(let i=0;i<256;i++){ perm[i] = i; }
+    for(let i=255;i>0;i--){
+      seed = (seed*1664525 + 1013904223)>>>0;
+      const j = (seed & 255) % (i+1);
+      const t = perm[i]; perm[i] = perm[j]; perm[j] = t;
+    }
+    for(let i=0;i<256;i++){ perm[i+256]=perm[i]; }
+  }
+  reseed(seed);
+  const fade = t => t*t*t*(t*(t*6-15)+10);
+  const lerp = (a,b,t) => a + t*(b-a);
+  function grad(h, x, y){
+    const u = (h & 1) ? x : y;
+    const v = (h & 2) ? -y : x;
+    return ((h & 4) ? -u : u) + ((h & 8) ? -v : v);
+  }
+  function noise2d(x, y){
+    const X = Math.floor(x) & 255;
+    const Y = Math.floor(y) & 255;
+    const xf = x - Math.floor(x);
+    const yf = y - Math.floor(y);
+    const u = fade(xf), v = fade(yf);
+    const aa = perm[X + perm[Y]], ab = perm[X + perm[Y+1]];
+    const ba = perm[X+1 + perm[Y]], bb = perm[X+1 + perm[Y+1]];
+    const x1 = lerp(grad(aa, xf,   yf),   grad(ba, xf-1, yf),   u);
+    const x2 = lerp(grad(ab, xf,   yf-1), grad(bb, xf-1, yf-1), u);
+    return lerp(x1, x2, v); // ~[-1,1]
+  }
+  function fbm2d(x,y,oct=3){
+    let amp=0.6, freq=1.0, sum=0, norm=0;
+    for(let i=0;i<oct;i++){
+      sum += (noise2d(x*freq, y*freq)*0.5+0.5) * amp;
+      norm += amp;
+      amp *= 0.55;
+      freq *= 1.9;
+    }
+    return sum/norm; // [0,1]
+  }
+  return { fbm2d, reseed };
+})();
+
+// ================== NUAGES réalistes (offscreen + blur) ==================
+const cloudLayers = [
+  { baseScale: 2.8, detailMix: 0.25, threshold: 0.48, alpha: 0.80, evolveX: 0.010, evolveY: 0.004 }, // proche
+  { baseScale: 3.6, detailMix: 0.20, threshold: 0.52, alpha: 0.60, evolveX: 0.006, evolveY: 0.002 }  // lointain
+];
+
+let cloudA=null, ctxA=null, cloudB=null, ctxB=null;
+
+function ensureCloudCanvases(){
+  const w = Math.max(140, Math.round(cssW*0.45)); // volontairement petit => pas de grain
+  const h = Math.max(105, Math.round(cssH*0.45));
+  if(!cloudA){ cloudA=document.createElement('canvas'); ctxA=cloudA.getContext('2d'); }
+  if(!cloudB){ cloudB=document.createElement('canvas'); ctxB=cloudB.getContext('2d'); }
+  cloudA.width=w; cloudA.height=h;
+  cloudB.width=w; cloudB.height=h;
 }
 
-/* ================== PLUIE ================== */
+const smoothstep = (a,b,x) => {
+  const t = Math.max(0, Math.min(1, (x-a)/(b-a)));
+  return t*t*(3-2*t);
+};
+
+function renderLayer(offCtx, layer, time){
+  const ow = offCtx.canvas.width, oh = offCtx.canvas.height;
+  const img = offCtx.getImageData(0,0,ow,oh);
+  const data = img.data;
+
+  for(let y=0;y<oh;y++){
+    const yy = y/oh;
+    for(let x=0;x<ow;x++){
+      const xx = x/ow;
+      const nx = xx*layer.baseScale + time*layer.evolveX;
+      const ny = yy*layer.baseScale + time*layer.evolveY;
+
+      const base = Noise.fbm2d(nx, ny, 3); // [0..1]
+      const cover = smoothstep(layer.threshold-0.10, layer.threshold+0.08, base);
+
+      const det = Noise.fbm2d(nx*2.2, ny*2.2, 2);
+      let a = cover * (0.65 + det*layer.detailMix);
+      a = Math.pow(a, 1.15);             // bords adoucis
+      a *= layer.alpha;
+
+      const idx = (y*ow + x)*4;
+      data[idx+0] = 246; // blanc légèrement bleuté
+      data[idx+1] = 250;
+      data[idx+2] = 255;
+      data[idx+3] = Math.floor(a*255);
+    }
+  }
+  offCtx.putImageData(img,0,0);
+}
+
+function drawClouds(){
+  ensureCloudCanvases();
+  const t = anim.t * 0.002; // évolution lente
+
+  renderLayer(ctxB, cloudLayers[1], t*0.85);
+  renderLayer(ctxA, cloudLayers[0], t);
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.filter = 'blur(1.2px)';
+  ctx.globalAlpha = 1.0;
+  ctx.drawImage(cloudB, 0, 0, cssW, cssH);
+  ctx.drawImage(cloudA, 0, 0, cssW, cssH);
+  ctx.filter = 'none';
+  ctx.restore();
+}
+
+// ================== CLEAR SKY (soleil + cirrus fins) ==================
+function drawClearExtras(){
+  // Soleil (halo + pulsation très légère)
+  const t = anim.t;
+  const sunX = cssW * 0.82;
+  const sunY = cssH * 0.18;
+  const baseR = 42;
+  const pulse = Math.sin(t*0.02) * 3; // ±3px
+  const r = baseR + pulse;
+
+  // disque lumineux + halo
+  const grad = ctx.createRadialGradient(sunX, sunY, r*0.3, sunX, sunY, r);
+  grad.addColorStop(0, 'rgba(255,250,205,1)');
+  grad.addColorStop(1, 'rgba(255,250,205,0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(sunX, sunY, r, 0, Math.PI*2);
+  ctx.fill();
+
+  // léger rayonnement extérieur
+  ctx.save();
+  ctx.globalAlpha = 0.25;
+  ctx.filter = 'blur(1.4px)';
+  ctx.beginPath(); ctx.arc(sunX, sunY, r+18, 0, Math.PI*2); ctx.fill();
+  ctx.filter = 'none';
+  ctx.restore();
+
+  // Cirrus très fins (3 “voiles” qui dérivent lentement)
+  ctx.save();
+  ctx.globalAlpha = 0.25;
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.filter = 'blur(1px)';
+
+  const speed = 0.06; // px/frame
+  for(let i=0;i<3;i++){
+    const x = ((t*speed) + i*140) % (cssW+120) - 60;
+    const y = 40 + i*28;
+    ctx.beginPath();
+    ctx.ellipse(x, y, 60 + i*10, 18, 0, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  ctx.filter = 'none';
+  ctx.restore();
+}
+
+// ================== PLUIE ==================
 function initRain(count=110){
   anim.rain.length = 0;
   const mps = anim.wind.speed || 0;
@@ -233,7 +329,7 @@ function drawRain(){
   }
 }
 
-/* ================== NEIGE ================== */
+// ================== NEIGE ==================
 function initSnow(count=85){
   anim.snow.length = 0;
   count = Math.round(count * (cssW/380) * (cssH/220));
@@ -278,7 +374,7 @@ function drawSnow(){
   }
 }
 
-/* ================== ÉCLAIRS ================== */
+// ================== ÉCLAIRS ==================
 function drawLightning(){
   ctx.fillStyle = 'rgba(255,255,255,0.14)';
   ctx.fillRect(0,0,cssW,cssH);
@@ -291,11 +387,11 @@ function drawLightning(){
   ctx.stroke();
 }
 
-/* ================== BOUCLE ================== */
+// ================== BOUCLE ==================
 function setScene(kind){
   anim.type=kind;
-  if(kind==='rain' || kind==='drizzle' || kind==='thunder') { initRain(); }
-  else if(kind==='snow') { initSnow(); }
+  if(kind==='rain' || kind==='drizzle' || kind==='thunder') initRain();
+  else if(kind==='snow') initSnow();
 }
 function loop(){
   anim.t++;
@@ -304,22 +400,34 @@ function loop(){
   else if(anim.type==='clouds'){ paintSky('#7f93a5','#70859a'); }
   else if(['rain','drizzle','thunder'].includes(anim.type)){ paintSky('#5a6b76','#4d5e6a'); }
   else if(anim.type==='snow'){ paintSky('#b9d6f2','#a8c9ea'); }
-  else { paintSky('#6b7280','#606872'); } // mist par défaut
+  else { paintSky('#6b7280','#606872'); } // mist/haze
 
-  // nuages réalistes simplifiés
-  if(anim.type!=='clear'){ drawClouds(); }
+  // Décor par type
+  if(anim.type==='clear'){
+    drawClearExtras();              // soleil + cirrus fins
+  } else {
+    drawClouds();                   // nuages réalistes pour autres scènes
+  }
 
-  // phénomènes
+  // Phénomènes
   if(anim.type==='rain' || anim.type==='drizzle'){ drawRain(); }
   else if(anim.type==='thunder'){ drawRain(); if(anim.t % 140 === 0) drawLightning(); }
   else if(anim.type==='snow'){ drawSnow(); }
-  else if(anim.type==='mist'){ /* voile déjà inclus via paint/drawClouds */ }
+
+  // légère brume intégratrice (hors clear)
+  if(anim.type!=='clear'){
+    const g = ctx.createLinearGradient(0,0,0,cssH);
+    g.addColorStop(0, 'rgba(220,230,235,0.08)');
+    g.addColorStop(0.5, 'rgba(220,230,235,0.14)');
+    g.addColorStop(1, 'rgba(220,230,235,0.08)');
+    ctx.fillStyle = g; ctx.fillRect(0,0,cssW,cssH);
+  }
 
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
 
-/* ================== WIDGET (données) ================== */
+// ================== WIDGET (données) ==================
 function toSceneFromMain(main){
   const m = (main||'').toLowerCase();
   if(m==='clear') return 'clear';
@@ -329,11 +437,12 @@ function toSceneFromMain(main){
   if(m==='thunderstorm') return 'thunder';
   if(m==='snow') return 'snow';
   if(['mist','haze','fog','smoke','dust'].includes(m)) return 'mist';
-  return 'clouds'; // fallback neutre
+  return 'clouds';
 }
 
 async function getWeather(){
-  const url = `https://api.openweathermap.org/data/2.5/weather?lat=${CURRENT.lat}&lon=${CURRENT.lon}&units=metric&lang=fr&appid=${API_KEY}`;
+  // ⚠️ JS doit utiliser & bruts (pas d’entités HTML)
+  const url = `https://api.openweathermap.org/data/2.5/weather?lat=${LAT}&lon=${LON}&units=metric&lang=fr&appid=${API_KEY}`;
   try{
     const res = await fetch(url, { cache: 'no-store' });
     if(!res.ok){ throw new Error(`HTTP ${res.status}`); }
@@ -344,7 +453,6 @@ async function getWeather(){
     const main = weather.main || '';
     const desc = weather.description || '—';
 
-    $('city').textContent = CURRENT.name;
     $('temp').textContent = `${Math.round(data.main.temp)}°C`;
     $('desc').textContent = desc;
     $('wind').textContent = `${Math.round(((data.wind && data.wind.speed) ? data.wind.speed : 0)*3.6)} km/h`;
@@ -359,11 +467,11 @@ async function getWeather(){
 
     $('updated').textContent = `Maj ${new Intl.DateTimeFormat('fr-FR',{hour:'2-digit',minute:'2-digit'}).format(new Date())}`;
 
-    // vent pour pluie (inclinaison)
     anim.wind.speed = (data.wind && data.wind.speed) ? data.wind.speed : 0; // m/s
     anim.wind.deg   = (data.wind && data.wind.deg)   ? data.wind.deg   : 0;
 
     setScene(toSceneFromMain(main));
+    $('city').textContent = 'Nice, FR'; // garde l’intitulé (modifie si tu changes LAT/LON)
   } catch(e){
     console.error(e);
     $('updated').textContent = `Erreur de mise à jour`;
@@ -373,24 +481,7 @@ async function getWeather(){
   }
 }
 
-/* ================== Sélection de ville ================== */
-function setActiveChip(key){
-  document.querySelectorAll('.chip').forEach(b=>{
-    b.classList.toggle('active', b.dataset.city===key);
-  });
-}
-function onCityClick(e){
-  const key = e.target?.dataset?.city;
-  if(!key || !CITY_COORDS[key]) return;
-  CURRENT = { key, ...CITY_COORDS[key] };
-  localStorage.setItem('cityKey', key);
-  setActiveChip(key);
-  getWeather();
-}
-document.getElementById('cities').addEventListener('click', onCityClick);
-
-/* ================== Démarrage ================== */
-setActiveChip(CURRENT.key);
+// Lancer
 getWeather();
 </script>
 </body>
