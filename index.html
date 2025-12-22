@@ -350,6 +350,9 @@ function loop(){
 }
 requestAnimationFrame(loop);
 
+<!-- ... tout le CSS et HTML au-dessus inchangé ... -->
+
+<script>
 // ================== WIDGET (données) ==================
 function toSceneFromMain(main){
   const m = (main||'').toLowerCase();
@@ -363,27 +366,21 @@ function toSceneFromMain(main){
   return 'clouds';
 }
 
-
-<script>
 async function getWeather(){
-  // ⚠️ Bien des & bruts dans l’URL JS (pas de &amp;)
+  // ✅ URL corrigée (pas de &amp;)
   const url = `https://api.openweathermap.org/data/2.5/weather?lat=${LAT}&lon=${LON}&units=metric&lang=fr&appid=${API_KEY}`;
 
   try {
     const res = await fetch(url, { cache: 'no-store' });
-    if (!res.ok) { throw new Error(`HTTP ${res.status}`); }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
     const data = await res.json();
-    // OpenWeather peut renvoyer cod en string → on normalise
-    if (data.cod && String(data.cod) !== '200') {
-      throw new Error(data.message || `Code ${data.cod}`);
-    }
+    if (data.cod && String(data.cod) !== '200') throw new Error(data.message || `Code ${data.cod}`);
 
     const weather = (data.weather && data.weather[0]) || {};
     const main = weather.main || '';
     const desc = weather.description || '—';
 
-    // Maj UI
     document.getElementById('temp').textContent = `${Math.round(data.main.temp)}°C`;
     document.getElementById('desc').textContent = desc;
     document.getElementById('wind').textContent = `${Math.round(((data.wind && data.wind.speed) ? data.wind.speed : 0) * 3.6)} km/h`;
@@ -397,32 +394,19 @@ async function getWeather(){
     iconEl.onerror = () => { iconEl.src = W_ICON('01d'); };
 
     document.getElementById('updated').textContent =
-      `Maj ${new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' }).format(new Date())}`;
+      `Maj ${new Intl.DateTimeFormat('fr-FR',{hour:'2-digit',minute:'2-digit'}).format(new Date())}`;
 
-    // Vent pour la pluie
     anim.wind.speed = (data.wind && data.wind.speed) ? data.wind.speed : 0;
     anim.wind.deg   = (data.wind && data.wind.deg)   ? data.wind.deg   : 0;
 
-    // Sélection de scène
-    const m = (main || '').toLowerCase();
-    const scene =
-      m === 'clear'         ? 'clear'   :
-      m === 'clouds'        ? 'clouds'  :
-      m === 'rain'          ? 'rain'    :
-      m === 'drizzle'       ? 'drizzle' :
-      m === 'thunderstorm'  ? 'thunder' :
-      m === 'snow'          ? 'snow'    :
-      ['mist','haze','fog','smoke','dust'].includes(m) ? 'mist' : 'clouds';
-
-    setScene(scene);
+    setScene(toSceneFromMain(main));
 
   } catch (e) {
     console.error(e);
-    // Bloc catch proprement fermé : aucune ligne “bizarre”
     document.getElementById('updated').textContent = 'Erreur de mise à jour';
     document.getElementById('desc').textContent    = 'Impossible de récupérer la météo';
-    document.getElementById('temp').textContent    = '--°C';
-    set    setScene('mist');
+    document.getElement    document.getElementById('temp').textContent    = '--°C';
+    setScene('mist');
   }
 }
 
