@@ -146,7 +146,7 @@ function paintSky(colorA='#708090', colorB='#667788'){
 // ================== NUAGES AMÉLIORÉS ==================
 function initClouds(count=7){
   anim.clouds.length = 0;
-  // densité globale plus légère si petite carte
+  // densité globale adaptée à la taille
   count = Math.max(5, Math.round(count * (cssW/380)));
   for(let i=0;i<count;i++){
     const r = 28 + Math.random()*42;
@@ -240,7 +240,7 @@ function initSnow(count=90){
     const vy = 1 + Math.random()*1.8;
     const swayAmp = 10 + Math.random()*18;   // amplitude de balancement
     const swayFreq = 0.002 + Math.random()*0.004; // fréquence
-    const blur = Math.random() < 0.4 ? 2 : 0; // quelques flocons floutés
+    const blur = Math.random() < 0.4 ? 2 : 0;     // quelques flocons floutés
 
     anim.snow.push({
       x: Math.random()*cssW,
@@ -385,7 +385,8 @@ function toSceneFromMain(main){
 }
 
 async function getWeather(){
-  const url=`https://api.openweathermap.org/data/2.5/weather?lat=${LAT}&lon=${LON}&units=metric&lang=fr&appid=${API_KEY}`;
+  // ⚠️ JS doit utiliser & et non &amp;
+  const url = `https://api.openweathermap.org/data/2.5/weather?lat=${LAT}&lon=${LON}&units=metric&lang=fr&appid=${API_KEY}`;
   try{
     const res = await fetch(url, { cache: 'no-store' });
     if(!res.ok){ throw new Error(`HTTP ${res.status}`); }
@@ -398,7 +399,7 @@ async function getWeather(){
 
     $('temp').textContent = `${Math.round(data.main.temp)}°C`;
     $('desc').textContent = desc;
-    $('wind').textContent = `${Math.round((data.wind?.speed||0)*3.6)} km/h`;
+    $('wind').textContent = `${Math.round(((data.wind && data.wind.speed) ? data.wind.speed : 0)*3.6)} km/h`;
     $('humidity').textContent = `${data.main.humidity}%`;
     $('pressure').textContent = `${data.main.pressure} hPa`;
 
@@ -410,14 +411,14 @@ async function getWeather(){
 
     $('updated').textContent = `Maj ${new Intl.DateTimeFormat('fr-FR',{hour:'2-digit',minute:'2-digit'}).format(new Date())}`;
 
-    // vent pour l'anim pluie
-    anim.wind.speed = data.wind?.speed || 0; // m/s
-    anim.wind.deg   = data.wind?.deg   || 0;
+    // vent pour l’anim pluie
+    anim.wind.speed = (data.wind && data.wind.speed) ? data.wind.speed : 0; // m/s
+    anim.wind.deg   = (data.wind && data.wind.deg)   ? data.wind.deg   : 0;
 
     setScene(toSceneFromMain(main));
   } catch(e){
     console.error(e);
-    $('    $('updated').textContent = `Erreur de mise à jour`;
+       $('updated').textContent = `Erreur de mise à jour`;
     $('desc').textContent = `Impossible de récupérer la météo`;
     $('temp').textContent = '--°C';
     setScene('mist');
