@@ -25,12 +25,40 @@
   .header { display:flex; justify-content:space-between; padding:14px 16px; background:rgba(56,189,248,.08); }
   .city { font-weight:600; }
   .updated { font-size:12px; color:#9ca3af; }
-  .canvas-box { width:100%; height:180px; position:relative; }
-  canvas { width:100%; height:100%; display:block; }
-  .main { display:grid; grid-template-columns:1fr auto; gap:12px; padding:16px; }
+
+  /* Le panneau des données, désormais avec canvas en fond */
+  .main {
+    position: relative;                  /* nécessaire pour positionner le canvas en fond */
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+    padding: 16px;
+    overflow: hidden;                    /* le canvas ne dépasse pas */
+    min-height: 160px;                   /* pour avoir une surface suffisante */
+  }
+
+  /* Canvas de fond qui couvre tout .main */
+  .bg-canvas {
+    position: absolute;
+    inset: 0;                            /* top:0; right:0; bottom:0; left:0 */
+    z-index: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;                /* les clics passent au contenu */
+  }
+
+  /* Le contenu est au-dessus du canvas */
+  .main > div,
+  .main > img {
+    position: relative;
+    z-index: 1;
+  }
+
   .temp { font-size:42px; font-weight:700; }
   .desc { color:#9ca3af; text-transform:capitalize; }
   .icon { width:72px; height:72px; }
+
   .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; padding:0 16px 16px; }
   .card { background:#111827; border-radius:12px; padding:12px; text-align:center; }
   .label { font-size:12px; color:#9ca3af; margin-bottom:6px; }
@@ -44,12 +72,12 @@
     <div class="updated" id="updated">—</div>
   </div>
 
-  <!-- Canvas intégré -->
-  <div class="canvas-box">
-    <canvas id="bg"></canvas>
-  </div>
+  <!-- Bloc principal : le canvas est intégré ici et couvre tout le fond -->
+  <div class="main" id="mainHost">
+    <!-- Canvas en fond -->
+    <canvas id="bg" class="bg-canvas"></canvas>
 
-  <div class="main">
+    <!-- Contenu au-dessus -->
     <div>
       <div class="temp" id="temp">--°C</div>
       <div class="desc" id="desc">—</div>
@@ -66,21 +94,29 @@
 
 <script>
 // ================== CONFIG ==================
-const API_KEY = "f5f9a18a44029213156c7571d5b0d3f0"; // ⚠️ Démo uniquement
+const API_KEY = "f5f9a18a44029213156c7571d5b0d3f0"; // ⚠️ Démo seulement — ne pas exposer en prod
 const LAT = 43.7009, LON = 7.2683;
 const W_ICON = (i) => `https://openweathermap.org/img/wn/${i}@2x.png`;
 
 // ================== CANVAS ==================
+const host = document.getElementById('mainHost');
 const canvas = document.getElementById('bg');
 const ctx = canvas.getContext('2d');
 
 function resizeCanvas(){
+  const rect = host.getBoundingClientRect();
   const dpr = window.devicePixelRatio || 1;
-  const cssW = canvas.offsetWidth;
-  const cssH = canvas.offsetHeight;
-  canvas.width = Math.floor(cssW * dpr);
-  canvas.height = Math.floor(cssH * dpr);
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // mise à l’échelle pour dessiner en unités CSS
+
+  // Taille CSS
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
+
+  // Taille interne en pixels
+  canvas.width  = Math.floor(rect.width * dpr);
+  canvas.height = Math.floor(rect.height * dpr);
+
+  // Dessiner en coordonnées CSS
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
@@ -88,9 +124,15 @@ window.addEventListener('resize', resizeCanvas);
 let anim = { type:'none', t:0, clouds:[], rain:[] };
 
 function initClouds(count=6){
+  const w = host.clientWidth, h = host.clientHeight;
   anim.clouds=[];
   for(let i=0;i<count;i++){
-    anim.clouds.push({x:Math.random()*canvas.offsetWidth,y:40+Math.random()*80,r:20+Math.random()*30,vx:0.3+Math.random()*0.5});
+    anim.clouds.push({
+      x: Math.random()*w,
+      y: 20 + Math.random()*(h-40),
+      r: 20 + Math.random()*30,
+      vx: 0.3 + Math.random()*0.5
+    });
   }
 }
 function drawCloud(c){
@@ -98,13 +140,20 @@ function drawCloud(c){
   ctx.beginPath(); ctx.arc(c.x,c.y,c.r,0,Math.PI*2); ctx.fill();
   ctx.beginPath(); ctx.arc(c.x+c.r*0.6,c.y+c.r*0.2,c.r*0.7,0,Math.PI*2); ctx.fill();
 }
+
 function initRain(count=80){
+  const w = host.clientWidth, h = host.clientHeight;
   anim.rain=[];
   for(let i=0;i<count;i++){
-    anim.rain.push({x:Math.random()*canvas.offsetWidth,y:Math.random()*canvas.offsetHeight,len:6+Math.random()*8,vy:3+Math.random()*3});
+    anim.rain.push({
+      x: Math.random()*w,
+      y: Math.random()*h,
+      len: 6 + Math.random()*8,
+      vy: 3 + Math.random()*3
+    });
   }
 }
-function drawRain(){
+function drawRain(w,h){
   ctx.strokeStyle='#00BFFF';
   ctx.lineWidth=1;
   for(const d of anim.rain){
@@ -112,41 +161,53 @@ function drawRain(){
     ctx.moveTo(d.x,d.y);
     ctx.lineTo(d.x,d.y+d.len);
     ctx.stroke();
-    d.y+=d.vy;
-    if(d.y>canvas.offsetHeight){ d.y=-d.len; d.x=Math.random()*canvas.offsetWidth; }
+    d.y += d.vy;
+    if(d.y > h){ d.y = -d.len; d.x = Math.random()*w; }
   }
 }
+
 function drawSun(){
+  const w = host.clientWidth, h = host.clientHeight;
   ctx.fillStyle='#87CEEB';
-  ctx.fillRect(0,0,canvas.offsetWidth,canvas.offsetHeight);
+  ctx.fillRect(0,0,w,h);
   ctx.beginPath();
-  ctx.arc(canvas.offsetWidth/2,canvas.offsetHeight/2,40,0,Math.PI*2);
+  ctx.arc(w/2, h/2, 40, 0, Math.PI*2);
   ctx.fillStyle='#FFD700';
   ctx.fill();
 }
 
 function setScene(kind){
   anim.type=kind;
-  if(kind==='clouds')initClouds();
-  else if(['rain','drizzle','thunder'].includes(kind))initRain();
+  if(kind==='clouds') initClouds();
+  else if(['rain','drizzle','thunder'].includes(kind)) initRain();
 }
 
 function loop(){
+  const w = host.clientWidth, h = host.clientHeight;
+
   anim.t++;
-  ctx.clearRect(0,0,canvas.offsetWidth,canvas.offsetHeight);
+  ctx.clearRect(0,0,w,h);
+
   if(anim.type==='clear'){ 
     drawSun(); 
   } else if(anim.type==='clouds'){
-    ctx.fillStyle='#708090'; ctx.fillRect(0,0,canvas.offsetWidth,canvas.offsetHeight);
-    for(const c of anim.clouds){ drawCloud(c); c.x+=c.vx; if(c.x-c.r>canvas.offsetWidth)c.x=-c.r; }
+    ctx.fillStyle='#708090'; ctx.fillRect(0,0,w,h);
+    for(const c of anim.clouds){ 
+      drawCloud(c); 
+      c.x += c.vx; 
+      if(c.x - c.r > w) c.x = -c.r; 
+    }
   } else if(['rain','drizzle','thunder'].includes(anim.type)){
-    ctx.fillStyle='#2F4F4F'; ctx.fillRect(0,0,canvas.offsetWidth,canvas.offsetHeight);
-    drawRain();
-    if(anim.type==='thunder'&&(anim.t%120)<6){ ctx.fillStyle='rgba(255,255,255,0.3)'; ctx.fillRect(0,0,canvas.offsetWidth,canvas.offsetHeight); }
+    ctx.fillStyle='#2F4F4F'; ctx.fillRect(0,0,w,h);
+    drawRain(w,h);
+    if(anim.type==='thunder' && (anim.t%120) < 6){
+      ctx.fillStyle='rgba(255,255,255,0.3)';
+      ctx.fillRect(0,0,w,h);
+    }
   } else if(anim.type==='snow'){
-    ctx.fillStyle='#b9d6f2'; ctx.fillRect(0,0,canvas.offsetWidth,canvas.offsetHeight);
+    ctx.fillStyle='#b9d6f2'; ctx.fillRect(0,0,w,h);
   } else {
-    ctx.fillStyle='#6b7280'; ctx.fillRect(0,0,canvas.offsetWidth,canvas.offsetHeight);
+    ctx.fillStyle='#6b7280'; ctx.fillRect(0,0,w,h);
   }
   requestAnimationFrame(loop);
 }
@@ -180,7 +241,7 @@ async function getWeather(){
 
     $('temp').textContent = `${Math.round(data.main.temp)}°C`;
     $('desc').textContent = desc;
-    $('wind').textContent = `${Math.round((data.wind.speed||0)*3.6)} km/h`;
+    $('wind').textContent = `${Math.round((data.wind?.speed||0)*3.6)} km/h`;
     $('humidity').textContent = `${data.main.humidity}%`;
     $('pressure').textContent = `${data.main.pressure} hPa`;
 
@@ -196,12 +257,11 @@ async function getWeather(){
   } catch(e){
     console.error(e);
     $('updated').textContent = `Erreur de mise à jour`;
-    $('desc').textContent = `Impossible de récupérer la météo`;
+    $('desc').textContent    $('desc').textContent = `Impossible de récupérer la météo`;
   }
 }
 
-// ✅ Corrige la typo ici
+// ✅ Appel correct (remplace l’ancien getgetWeather)
 getWeather();
 </script>
 </body>
-</html
