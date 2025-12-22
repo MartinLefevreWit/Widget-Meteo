@@ -26,7 +26,6 @@
     box-sizing: border-box;
   }
 
-  /* Canvas couvre TOUTE la carte */
   .bg-canvas {
     position:absolute; inset:0; z-index:0;
     width:100%; height:100%; display:block;
@@ -35,7 +34,6 @@
     backface-visibility: hidden;
   }
 
-  /* Contenu par-dessus */
   .header, .main, .grid { position: relative; z-index: 1; }
 
   .header {
@@ -68,7 +66,6 @@
 </head>
 <body>
 <div class="widget" id="widget">
-  <!-- Canvas fond -->
   <canvas id="bg" class="bg-canvas"></canvas>
 
   <div class="header">
@@ -93,7 +90,7 @@
 
 <script>
 // ================== CONFIG ==================
-const API_KEY = "f5f9a18a44029213156c7571d5b0d3f0"; // ⚠️ Démo — ne pas exposer en prod
+const API_KEY = "f5f9a18a44029213156c7571d5b0d3f0"; // Démo
 const LAT = 43.7009, LON = 7.2683;
 const W_ICON = (i) => `https://openweathermap.org/img/wn/${i}@2x.png`;
 
@@ -105,8 +102,8 @@ const ctx = canvas.getContext('2d');
 let cssW = 0, cssH = 0, dpr = 1;
 
 function measureHost(){
-  cssW = host.clientWidth;     // pixels CSS entiers
-  cssH = host.clientHeight;    // pixels CSS entiers
+  cssW = host.clientWidth;
+  cssH = host.clientHeight;
   dpr  = window.devicePixelRatio || 1;
 }
 function resizeCanvas(){
@@ -115,7 +112,7 @@ function resizeCanvas(){
   canvas.style.height = `${cssH}px`;
   canvas.width  = Math.ceil(cssW * dpr);
   canvas.height = Math.ceil(cssH * dpr);
-  ctx.setTransform(dpr,0,0,dpr,0,0); // dessiner en unités CSS
+  ctx.setTransform(dpr,0,0,dpr,0,0);
 }
 resizeCanvas();
 new ResizeObserver(resizeCanvas).observe(host);
@@ -128,13 +125,12 @@ let anim = {
   clouds:[],   // { x, y, vx, alpha, lobes:[{dx,dy,r}] }
   rain:[],
   snow:[],
-  wind:{ speed:0, deg:0 } // m/s et degrés météo (0=N, 90=E)
+  wind:{ speed:0, deg:0 }
 };
 
 // ================== OUTILS ==================
 function $(id){ return document.getElementById(id); }
 
-// Dégradé ciel selon type
 function paintSky(colorA='#708090', colorB='#667788'){
   const g = ctx.createLinearGradient(0,0,0,cssH);
   g.addColorStop(0, colorA);
@@ -148,11 +144,10 @@ function initClouds(count=7){
   anim.clouds.length = 0;
   count = Math.max(4, Math.round(count * (cssW/380)));
   for(let i=0;i<count;i++){
-    const baseR = 26 + Math.random()*38;               // taille globale du nuage
-    const puffCount = 4 + Math.floor(Math.random()*3); // 4..6 lobes
+    const baseR = 26 + Math.random()*38;
+    const puffCount = 4 + Math.floor(Math.random()*3);
     const alpha = 0.65 + Math.random()*0.2;
 
-    // génère une fois les lobes (fixe)
     const lobes = [];
     for(let p=0;p<puffCount;p++){
       const dx = (Math.random()-0.5) * baseR * 0.9;
@@ -164,7 +159,7 @@ function initClouds(count=7){
     anim.clouds.push({
       x: Math.random()*cssW,
       y: 25 + Math.random()*(cssH-80),
-      vx: 0.05 + Math.random()*0.07,     // **vitesse lente**
+      vx: 0.05 + Math.random()*0.07, // vitesse lente
       alpha,
       lobes
     });
@@ -185,7 +180,6 @@ function drawCloud(c){
     ctx.arc(px, py, l.r, 0, Math.PI*2);
     ctx.fill();
   }
-
   ctx.shadowBlur = 0;
 }
 
@@ -325,8 +319,8 @@ function loop(){
   if(anim.type==='clouds'){
     for(const c of anim.clouds){
       drawCloud(c);
-      c.x += c.vx;                              // **déplacement lent**
-      if(c.x - 70 > cssW) c.x = -70;            // recycle hors champ
+      c.x += c.vx;                       // déplacement lent
+      if(c.x - 70 > cssW) c.x = -70;
     }
   } else if(anim.type==='rain' || anim.type==='drizzle'){
     drawRain();
@@ -342,7 +336,7 @@ function loop(){
     if(anim.clouds.length===0) initClouds(4);
     for(const c of anim.clouds){
       const oldVx = c.vx;
-      c.vx = 0.035;                               // encore plus doux en brouillard
+      c.vx = 0.035;  // encore plus doux
       c.alpha = 0.45;
       drawCloud(c);
       c.x += c.vx;
@@ -393,12 +387,13 @@ async function getWeather(){
     iconEl.alt = `Conditions : ${desc}`;
     iconEl.onerror = () => { iconEl.src = W_ICON('01d'); };
 
-    $('updated').textContent = `Maj ${new Intl.DateTimeFormat('fr-FR',{hour:'2-digit',minute:'2-digit'}).format(new Date    $('updated').textContent = `Maj ${new Intl.DateTimeFormat('fr-FR',{hour:'2-digit',minute:'2-digit'}).format(new Date())}`;
+    $('updated').textContent =
+      `Maj ${new Intl.DateTimeFormat('fr-FR',{hour:'2-digit',minute:'2-digit'}).format(new Date())}`;
 
     anim.wind.speed = (data.wind && data.wind.speed) ? data.wind.speed : 0; // m/s
     anim.wind.deg   = (data.wind && data.wind.deg)   ? data.wind.deg   : 0;
 
-    setScene(toSceneFromMain(main));
+    set    setScene(toSceneFromMain(main));
   } catch(e){
     console.error(e);
     $('updated').textContent = `Erreur de mise à jour`;
