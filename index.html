@@ -233,7 +233,8 @@ async function getWeather(){
     const res = await fetch(url, { cache: 'no-store' });
     if(!res.ok){ throw new Error(`HTTP ${res.status}`); }
     const data = await res.json();
-    if(data.cod && data.cod !== 200){ throw new Error(data.message || `Code ${data.cod}`); }
+    // OpenWeather peut renvoyer cod en string; on normalise
+    if(data.cod && String(data.cod) !== '200'){ throw new Error(data.message || `Code ${data.cod}`); }
 
     const weather = (data.weather && data.weather[0]) || {};
     const main = weather.main || '';
@@ -257,7 +258,8 @@ async function getWeather(){
   } catch(e){
     console.error(e);
     $('updated').textContent = `Erreur de mise à jour`;
-    $('desc').textContent    $('desc').textContent = `Impossible de récupérer la météo`;
+    $('desc').textContent = `Impossible de récupérer la météo`;
+    $('temp').textContent = '--°C';
   }
 }
 
