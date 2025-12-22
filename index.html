@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Widget Météo – OpenWeather (canvas sur toute la carte)</title>
+<title>Widget Météo – OpenWeather (canvas sur toute la carte, sans barre)</title>
 <style>
   html, body {
     margin:0; padding:0;
@@ -23,6 +23,7 @@
     box-shadow:0 10px 25px rgba(0,0,0,.35);
     overflow:hidden;
     backdrop-filter: blur(6px);
+    box-sizing: border-box;            /* cohérent pour les mesures CSS */
   }
 
   /* Canvas qui couvre TOUTE la carte */
@@ -34,6 +35,8 @@
     height:100%;
     display:block;
     pointer-events:none;
+    will-change: transform;            /* aide le moteur à stabiliser le rendu */
+    backface-visibility: hidden;
   }
 
   /* Contenu au-dessus */
@@ -107,27 +110,34 @@ const host = document.getElementById('widget');
 const canvas = document.getElementById('bg');
 const ctx = canvas.getContext('2d');
 
-// Variables globales de taille (CSS) pour éviter les divergences
+// Dimensions CSS (entiers) + dpr
 let cssW = 0, cssH = 0, dpr = 1;
 
-function resizeCanvas(){
-  const rect = host.getBoundingClientRect();
-  cssW = rect.width;
-  cssH = rect.height;
+// Mesure robuste : clientWidth/Height évite les flottants
+function measureHost(){
+  cssW = host.clientWidth;              // entier en pixels CSS
+  cssH = host.clientHeight;             // entier en pixels CSS
   dpr = window.devicePixelRatio || 1;
+}
 
-  // Taille CSS (pour le layout)
+function resizeCanvas(){
+  measureHost();
+
+  // Taille CSS
   canvas.style.width = `${cssW}px`;
   canvas.style.height = `${cssH}px`;
 
-  // Taille interne (pixels physiques)
-  canvas.width  = Math.round(cssW * dpr);
-  canvas.height = Math.round(cssH * dpr);
+  // Taille interne (sur-dimensionnée à l'entier supérieur)
+  canvas.width  = Math.ceil(cssW * dpr);
+  canvas.height = Math.ceil(cssH * dpr);
 
-  // Dessiner en unités CSS
+  // Dessin en unités CSS
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 resizeCanvas();
+
+// ResizeObserver > évite les décalages au reflow
+new ResizeObserver(resizeCanvas).observe(host);
 window.addEventListener('resize', resizeCanvas);
 
 let anim = { type:'none', t:0, clouds:[], rain:[] };
@@ -174,9 +184,8 @@ function drawRain(){
 }
 
 function drawSun(){
-  // Légers débords pour éviter la "colonne" non peinte
   ctx.fillStyle='#87CEEB';
-  ctx.fillRect(-1,-1,cssW+2,cssH+2);
+  ctx.fillRect(0,0,cssW,cssH);          // peindre toute la surface CSS
   ctx.beginPath();
   ctx.arc(cssW/2, cssH/2, 48, 0, Math.PI*2);
   ctx.fillStyle='#FFD700';
@@ -192,14 +201,14 @@ function setScene(kind){
 function loop(){
   anim.t++;
 
-  // Effacer toute la surface en unités CSS (avec débord anti-ligne)
-  ctx.clearRect(-1,-1,cssW+2,cssH+2);
+  // Effacer toute la surface CSS
+  ctx.clearRect(0,0,cssW,cssH);
 
   if(anim.type==='clear'){ 
     drawSun(); 
   } else if(anim.type==='clouds'){
     ctx.fillStyle='#708090';
-    ctx.fillRect(-1,-1,cssW+2,cssH+2);
+    ctx.fillRect(0,0,cssW,cssH);
     for(const c of anim.clouds){ 
       drawCloud(c); 
       c.x += c.vx; 
@@ -207,18 +216,18 @@ function loop(){
     }
   } else if(['rain','drizzle','thunder'].includes(anim.type)){
     ctx.fillStyle='#2F4F4F';
-    ctx.fillRect(-1,-1,cssW+2,cssH+2);
+    ctx.fillRect(0,0,cssW,cssH);
     drawRain();
     if(anim.type==='thunder' && (anim.t%120) < 6){
       ctx.fillStyle='rgba(255,255,255,0.3)';
-      ctx.fillRect(-1,-1,cssW+2,cssH+2);
+      ctx.fillRect(0,0,cssW,cssH);
     }
   } else if(anim.type==='snow'){
     ctx.fillStyle='#b9d6f2';
-    ctx.fillRect(-1,-1,cssW+2,cssH+2);
+    ctx.fillRect(0,0,cssW,cssH);
   } else {
     ctx.fillStyle='#6b7280';
-    ctx.fillRect(-1,-1,cssW+2,cssH+2);
+    ctx.fillRect(0,0,cssW,cssH);
   }
   requestAnimationFrame(loop);
 }
@@ -277,3 +286,5 @@ async function getWeather(){
 getWeather();
 </script>
 </body>
+</html>
+``
