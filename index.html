@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Widget Météo – OpenWeather (nuages doux, respiration visible + micro-dérive)</title>
+<title>Widget Météo – OpenWeather (nuages réalistes, champs de bruit + parallaxe)</title>
 <style>
   html, body {
     margin:0; padding:0;
@@ -13,7 +13,6 @@
     display:grid; place-items:center;
     min-height:100vh;
   }
-
   .widget {
     position: relative;
     width:100%; max-width:380px;
@@ -25,17 +24,13 @@
     backdrop-filter: blur(6px);
     box-sizing: border-box;
   }
-
   .bg-canvas {
     position:absolute; inset:0; z-index:0;
     width:100%; height:100%; display:block;
     pointer-events:none;
-    will-change: transform;
     backface-visibility: hidden;
   }
-
   .header, .main, .grid { position: relative; z-index: 1; }
-
   .header {
     display:flex; justify-content:space-between; align-items:center;
     padding:14px 16px;
@@ -43,7 +38,6 @@
   }
   .city { font-weight:600; }
   .updated { font-size:12px; color:#9ca3af; }
-
   .main {
     display:grid; grid-template-columns:1fr auto; gap:12px;
     padding:16px; min-height:160px;
@@ -51,7 +45,6 @@
   .temp { font-size:42px; font-weight:700; opacity:.95; }
   .desc { color:#e5e7eb; opacity:.85; text-transform:capitalize; }
   .icon { width:72px; height:72px; }
-
   .grid {
     display:grid; grid-template-columns:repeat(3,1fr); gap:10px;
     padding:0 16px 16px;
@@ -100,7 +93,6 @@ const canvas = document.getElementById('bg');
 const ctx = canvas.getContext('2d');
 
 let cssW = 0, cssH = 0, dpr = 1;
-
 function measureHost(){
   cssW = host.clientWidth;
   cssH = host.clientHeight;
@@ -122,99 +114,165 @@ window.addEventListener('resize', resizeCanvas);
 let anim = {
   type:'none',
   t:0,
-  clouds:[],   // { x0,y0, alpha, wobble:{ax,ay,phaseX,phaseY,freqX,freqY}, lobes:[{dx0,dy0,r,ax,ay,phaseX,phaseY,freqX,freqY}] }
   rain:[],
   snow:[],
-  wind:{ speed:0, deg:0 }
+  wind:{ speed:0, deg:0 } // m/s et degrés météo
 };
-
-// amplitudes visibles mais subtiles
-const CLOUD_WOBBLE = 1.8;          // respiration des lobes (nuages)
-const CLOUD_WOBBLE_MIST = 1.0;     // respiration en brume
-const CLOUD_DRIFT = 1.6;           // micro-dérive globale (px)
-const CLOUD_DRIFT_FREQ = 0.0006;   // fréquence très lente
 
 // ================== OUTILS ==================
 function $(id){ return document.getElementById(id); }
-
-function paintSky(colorA='#708090', colorB='#667788'){
+function paintSky(colorA='#7f93a5', colorB='#70859a'){ // un peu plus réaliste
   const g = ctx.createLinearGradient(0,0,0,cssH);
   g.addColorStop(0, colorA);
   g.addColorStop(1, colorB);
   ctx.fillStyle = g;
   ctx.fillRect(0,0,cssW,cssH);
 }
+function drawMist(){
+  const g = ctx.createLinearGradient(0,0,0,cssH);
+  g.addColorStop(0, 'rgba(220,230,235,0.10)');
+  g.addColorStop(0.5, 'rgba(220,230,235,0.18)');
+  g.addColorStop(1, 'rgba(220,230,235,0.10)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,cssW,cssH);
+}
+function drawLightning(){
+  ctx.fillStyle = 'rgba(255,255,255,0.14)';
+  ctx.fillRect(0,0,cssW,cssH);
+  const startX = cssW*0.65 + (Math.random()-0.5)*40;
+  let x = startX, y = cssH*0.15;
+  ctx.strokeStyle = 'rgba(255,255,200,0.85)';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(x,y);
+  for(let i=0;i<6;i++){ x += (Math.random()<0.5?-1:1)*(12 + Math.random()*14); y += 20 + Math.random()*26; ctx.lineTo(x,y); }
+  ctx.stroke();
+}
 
-// ================== NUAGES ==================
-function initClouds(count=7){
-  anim.clouds.length = 0;
-  count = Math.max(4, Math.round(count * (cssW/380)));
-  for(let i=0;i<count;i++){
-    const baseR = 26 + Math.random()*36;
-    const puffCount = 4 + Math.floor(Math.random()*2);
-    const alpha = 0.58 + Math.random()*0.18;
-
-    // légère dérive globale par nuage
-    const wobble = {
-      ax: CLOUD_DRIFT * (0.6 + Math.random()*0.6), // amplitude X
-      ay: CLOUD_DRIFT * (0.6 + Math.random()*0.6), // amplitude Y
-      phaseX: Math.random()*Math.PI*2,
-      phaseY: Math.random()*Math.PI*2,
-      freqX: CLOUD_DRIFT_FREQ * (0.8 + Math.random()*0.6),
-      freqY: CLOUD_DRIFT_FREQ * (0.8 + Math.random()*0.6)
-    };
-
-    const lobes = [];
-    for(let p=0;p<puffCount;p++){
-      const dx0 = (Math.random()-0.5) * baseR * 0.85;
-      const dy0 = (Math.random()-0.5) * baseR * 0.50;
-      const r   = baseR * (0.55 + Math.random()*0.30);
-      const ax = 1.0 + Math.random()*1.0;            // amplitude X pour le lobe
-      const ay = 1.0 + Math.random()*1.0;            // amplitude Y pour le lobe
-      const phaseX = Math.random()*Math.PI*2;
-      const phaseY = Math.random()*Math.PI*2;
-      const freqX = 0.0016 + Math.random()*0.0014;   // plus visibles
-      const freqY = 0.0014 + Math.random()*0.0016;
-      lobes.push({ dx0, dy0, r, ax, ay, phaseX, phaseY, freqX, freqY });
+// ================== BRUIT 2D (Perlin-like léger, seedé) ==================
+const Noise = (() => {
+  const perm = new Uint8Array(512);
+  let seed = 1337; // changeable si besoin
+  function reseed(s){
+    seed = s>>>0;
+    for(let i=0;i<256;i++){
+      seed = (seed*1664525 + 1013904223)>>>0;
+      perm[i] = i;
     }
+    // shuffle
+    for(let i=255;i>0;i--){
+      seed = (seed*1664525 + 1013904223)>>>0;
+      const j = (seed & 255) % (i+1);
+      const t = perm[i]; perm[i] = perm[j]; perm[j] = t;
+    }
+    for(let i=0;i<256;i++){ perm[i+256] = perm[i]; }
+  }
+  reseed(20251222);
+  const fade = t => t*t*t*(t*(t*6-15)+10);
+  const lerp = (a,b,t) => a + t*(b-a);
+  function grad(h, x, y){
+    const u = (h & 1) ? x : y;
+    const v = (h & 2) ? -y : x;
+    return ((h & 4) ? -u : u) + ((h & 8) ? -v : v);
+  }
+  function noise2d(x, y){
+    const X = Math.floor(x) & 255;
+    const Y = Math.floor(y) & 255;
+    const xf = x - Math.floor(x);
+    const yf = y - Math.floor(y);
+    const u = fade(xf), v = fade(yf);
+    const aa = perm[X + perm[Y]], ab = perm[X + perm[Y+1]];
+    const ba = perm[X+1 + perm[Y]], bb = perm[X+1 + perm[Y+1]];
+    const x1 = lerp(grad(aa, xf,   yf),   grad(ba, xf-1, yf),   u);
+    const x2 = lerp(grad(ab, xf,   yf-1), grad(bb, xf-1, yf-1), u);
+    return lerp(x1, x2, v); // ~[-1,1]
+  }
+  return { noise2d, reseed };
+})();
 
-    anim.clouds.push({
-      x0: Math.random()*cssW,
-      y0: 30 + Math.random()*(cssH-90),
-      alpha,
-      wobble,
-      lobes
-    });
+// ================== NUAGES RÉALISTES – 2 couches en parallaxe ==================
+// Chaque couche est un canvas basse résolution (soft look en upscale)
+const cloudLayers = [
+  { scale: 0.018, speedX: 0.012, speedY: 0.004, threshold: 0.35, alpha: 0.80, detailScale: 2.6, detailMix: 0.30, heightBias: 0.10 },
+  { scale: 0.028, speedX: 0.006, speedY: 0.002, threshold: 0.42, alpha: 0.65, detailScale: 2.0, detailMix: 0.25, heightBias: 0.00 }
+];
+let cloudCanvasA = null, cloudCtxA = null;
+let cloudCanvasB = null, cloudCtxB = null;
+
+function ensureCloudCanvases(){
+  const w = Math.max(160, Math.round(cssW*0.55));
+  const h = Math.max(120, Math.round(cssH*0.55));
+  if(!cloudCanvasA){
+    cloudCanvasA = document.createElement('canvas'); cloudCanvasA.width = w; cloudCanvasA.height = h; cloudCtxA = cloudCanvasA.getContext('2d');
+    cloudCanvasB = document.createElement('canvas'); cloudCanvasB.width = w; cloudCanvasB.height = h; cloudCtxB = cloudCanvasB.getContext('2d');
+  } else {
+    cloudCanvasA.width = w; cloudCanvasA.height = h;
+    cloudCanvasB.width = w; cloudCanvasB.height = h;
   }
 }
 
-// dessine un nuage avec respiration + micro-dérive
-function drawCloud(c, wobbleAmp = CLOUD_WOBBLE){
-  // micro-dérive globale très lente
-  const t = anim.t;
-  const gx = c.x0 + Math.sin(c.wobble.phaseX + t*c.wobble.freqX) * c.wobble.ax;
-  const gy = c.y0 + Math.sin(c.wobble.phaseY + t*c.wobble.freqY) * c.wobble.ay;
+// utilités
+const smoothstep = (a,b,x) => {
+  const t = Math.max(0, Math.min(1, (x-a)/(b-a)));
+  return t*t*(3-2*t);
+};
 
-  ctx.shadowColor = `rgba(255,255,255,${Math.min(0.40, c.alpha)})`;
-  ctx.shadowBlur  = 8;
+// rendu d’une couche de nuages dans un canvas offscreen
+function renderCloudLayer(offCtx, layer, time){
+  const ow = offCtx.canvas.width, oh = offCtx.canvas.height;
+  const img = offCtx.getImageData(0,0,ow,oh);
+  const data = img.data;
 
-  for(const l of c.lobes){
-    const dx = l.dx0 + Math.sin(l.phaseX + t*l.freqX) * l.ax * wobbleAmp;
-    const dy = l.dy0 + Math.sin(l.phaseY + t*l.freqY) * l.ay * wobbleAmp;
-    const px = gx + dx;
-    const py = gy + dy;
+  // légère variation d'altitude pour casser la symétrie verticale
+  const hBias = layer.heightBias;
 
-    const grad = ctx.createRadialGradient(px, py, l.r*0.25, px, py, l.r);
-    grad.addColorStop(0, `rgba(255,255,255,${c.alpha})`);
-    grad.addColorStop(1, `rgba(255,255,255,${Math.max(0.26, c.alpha-0.28)})`);
-    ctx.fillStyle = grad;
+  // échantillonnage bruit
+  for(let y=0; y<oh; y++){
+    const yy = y/oh;
+    for(let x=0; x<ow; x++){
+      const xx = x/ow;
+      const nx = xx / layer.scale + time * layer.speedX;
+      const ny = (yy + hBias) / layer.scale + time * layer.speedY;
 
-    ctx.beginPath();
-    ctx.arc(px, py, l.r, 0, Math.PI*2);
-    ctx.fill();
+      // base + détail (deux octaves)
+      const base = Noise.noise2d(nx, ny) * 0.5 + 0.5; // [0,1]
+      const det  = Noise.noise2d(nx*layer.detailScale, ny*layer.detailScale) * 0.5 + 0.5;
+
+      // couverture
+      const cover = smoothstep(layer.threshold - 0.10, layer.threshold + 0.08, base);
+
+      // modulation détail + adoucissement
+      let a = cover * (0.65 + det*layer.detailMix);
+      a = Math.pow(a, 1.2); // gamma pour bords moins nets
+      a *= layer.alpha;
+
+      const idx = (y*ow + x)*4;
+      data[idx+0] = 255; // nuage quasi blanc, on garde le ciel dessous
+      data[idx+1] = 255;
+      data[idx+2] = 255;
+      data[idx+3] = Math.floor(a*255);
+    }
   }
+  offCtx.putImageData(img, 0, 0);
+}
 
-  ctx.shadowBlur = 0;
+function drawCloudsRealistic(){
+  ensureCloudCanvases();
+  // temps “lent” pour l’évolution (pas de déplacement visible rapide)
+  const t = anim.t * 0.0022;
+
+  // couche proche
+  renderCloudLayer(cloudCtxA, cloudLayers[0], t);
+  // couche lointaine
+  renderCloudLayer(cloudCtxB, cloudLayers[1], t*0.85);
+
+  // dessiner avec légère parallax et alpha global
+  ctx.globalAlpha = 1.0;
+  ctx.drawImage(cloudCanvasB, 0, 0, cssW, cssH);
+  ctx.globalAlpha = 1.0;
+  ctx.drawImage(cloudCanvasA, 0, 0, cssW, cssH);
+
+  // petite brume douce optionnelle pour l’intégration
+  ctx.globalAlpha = 1.0;
 }
 
 // ================== PLUIE ==================
@@ -307,70 +365,40 @@ function drawSnow(){
   }
 }
 
-// ================== BROUILLARD / FLASH ==================
-function drawMist(){
-  const g = ctx.createLinearGradient(0,0,0,cssH);
-  g.addColorStop(0, 'rgba(220,230,235,0.10)');
-  g.addColorStop(0.5, 'rgba(220,230,235,0.18)');
-  g.addColorStop(1, 'rgba(220,230,235,0.10)');
-  ctx.fillStyle = g;
-  ctx.fillRect(0,0,cssW,cssH);
-}
-function drawLightning(){
-  ctx.fillStyle = 'rgba(255,255,255,0.18)';
-  ctx.fillRect(0,0,cssW,cssH);
-
-  const startX = cssW*0.65 + (Math.random()-0.5)*40;
-  let x = startX, y = cssH*0.15;
-  ctx.strokeStyle = 'rgba(255,255,200,0.85)';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(x,y);
-  for(let i=0;i<6;i++){
-    x += (Math.random()<0.5?-1:1)*(12 + Math.random()*14);
-    y += 20 + Math.random()*26;
-    ctx.lineTo(x,y);
-  }
-  ctx.stroke();
-}
-
 // ================== BOUCLE ==================
 function setScene(kind){
   anim.type=kind;
-  if(kind==='clouds') { initClouds(); }
-  else if(kind==='rain' || kind==='drizzle' || kind==='thunder') { initRain(); }
+  if(kind==='rain' || kind==='drizzle' || kind==='thunder') { initRain(); }
   else if(kind==='snow') { initSnow(); }
 }
 function loop(){
   anim.t++;
 
-  // fond selon scène
-  if(anim.type==='clear'){ paintSky('#87CEEB','#78b8d9'); }
-  else if(anim.type==='clouds'){ paintSky('#7a8a99','#6e7f90'); }
-  else if(['rain','drizzle','thunder'].includes(anim.type)){ paintSky('#475861','#3d4e58'); }
+  // ciel
+  if(anim.type==='clear'){ paintSky('#89c7ea','#79b5d8'); }
+  else if(anim.type==='clouds'){ paintSky('#7f93a5','#70859a'); }
+  else if(['rain','drizzle','thunder'].includes(anim.type)){ paintSky('#5a6b76','#4d5e6a'); }
   else if(anim.type==='snow'){ paintSky('#b9d6f2','#a8c9ea'); }
   else { paintSky('#6b7280','#606872'); } // mist par défaut
 
-  // couches
+  // couches météo
   if(anim.type==='clouds'){
-    for(const c of anim.clouds){
-      drawCloud(c, CLOUD_WOBBLE);
-    }
+    drawCloudsRealistic();
   } else if(anim.type==='rain' || anim.type==='drizzle'){
-    drawRain(); drawMist();
+    drawCloudsRealistic();
+    drawRain();
+    drawMist();
   } else if(anim.type==='thunder'){
-    drawRain(); drawMist();
+    drawCloudsRealistic();
+    drawRain();
+    drawMist();
     if(anim.t % 140 === 0) drawLightning();
   } else if(anim.type==='snow'){
-    drawSnow(); drawMist();
-  } else { // mist
-    if(anim.clouds.length===0) initClouds(4);
-    for(const c of anim.clouds){
-      const oldAlpha = c.alpha;
-      c.alpha = 0.50;
-      drawCloud(c, CLOUD_WOBBLE_MIST);
-      c.alpha = oldAlpha;
-    }
+    drawCloudsRealistic();
+    drawSnow();
+    drawMist();
+  } else { // mist / haze
+    drawCloudsRealistic(); // faible contraste
     drawMist();
   }
 
