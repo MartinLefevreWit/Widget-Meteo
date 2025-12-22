@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Widget Météo – OpenWeather (nuages doux, pluie/neige réalistes)</title>
+<title>Widget Météo – OpenWeather (nuages doux, pluie/neige réalistes, nuages statiques)</title>
 <style>
   html, body {
     margin:0; padding:0;
@@ -143,7 +143,7 @@ function paintSky(colorA='#708090', colorB='#667788'){
   ctx.fillRect(0,0,cssW,cssH);
 }
 
-// ================== NUAGES — formes fixes & très douces ==================
+// ================== NUAGES — formes fixes & TOTALEMENT STATIQUES ==================
 function initClouds(count=7){
   anim.clouds.length = 0;
   // densité globale adaptée à la taille
@@ -151,7 +151,7 @@ function initClouds(count=7){
   for(let i=0;i<count;i++){
     const baseR = 26 + Math.random()*36;                 // taille globale
     const puffCount = 4 + Math.floor(Math.random()*2);   // 4..5 lobes
-    const alpha = 0.60 + Math.random()*0.15;             // un peu plus translucide
+    const alpha = 0.60 + Math.random()*0.15;             // translucide
 
     // génère une fois les lobes (fixes)
     const lobes = [];
@@ -165,7 +165,7 @@ function initClouds(count=7){
     anim.clouds.push({
       x: Math.random()*cssW,
       y: 30 + Math.random()*(cssH-90),
-      vx: 0.025 + Math.random()*0.045,    // ✅ vitesse LENTE
+      vx: 0,                       // ✅ nuages statiques
       alpha,
       lobes
     });
@@ -327,10 +327,10 @@ function loop(){
 
   // couches selon type
   if(anim.type==='clouds'){
+    // ✅ nuages statiques : on dessine, mais on NE BOUGE PAS c.x
     for(const c of anim.clouds){
       drawCloud(c);
-      c.x += c.vx;                       // ✅ déplacement lent
-      if(c.x - 70 > cssW) c.x = -70;
+      // (aucun déplacement)
     }
   } else if(anim.type==='rain' || anim.type==='drizzle'){
     drawRain();
@@ -343,15 +343,14 @@ function loop(){
     drawSnow();
     drawMist();
   } else { // mist
+    // ✅ en brume, petits nuages d’arrière-plan mais fixés
     if(anim.clouds.length===0) initClouds(4);
     for(const c of anim.clouds){
-      const oldVx = c.vx;
-      c.vx = 0.02;                        // encore plus doux en brume
+      const oldAlpha = c.alpha;
       c.alpha = 0.50;
       drawCloud(c);
-      c.x += c.vx;
-      if(c.x - 70 > cssW) c.x = -70;
-      c.vx = oldVx;
+      c.alpha = oldAlpha;
+      // (aucun déplacement)
     }
     drawMist();
   }
@@ -374,7 +373,7 @@ function toSceneFromMain(main){
 }
 
 async function getWeather(){
-  // ⚠️ JS doit utiliser & bruts (pas d'entités)
+  // ⚠️ JS doit utiliser & bruts (pas d’entités HTML)
   const url = `https://api.openweathermap.org/data/2.5/weather?lat=${LAT}&lon=${LON}&units=metric&lang=fr&appid=${API_KEY}`;
   try{
     const res = await fetch(url, { cache: 'no-store' });
@@ -398,7 +397,8 @@ async function getWeather(){
     iconEl.alt = `Conditions : ${desc}`;
     iconEl.onerror = () => { iconEl.src = W_ICON('01d'); };
 
-    $('updated').textContent = `Maj ${new Intl.DateTimeFormat('fr-FR',{hour:'2-digit',minute:'    $('updated').textContent = `Maj ${new Intl.DateTimeFormat('fr-FR',{hour:'2-digit',minute:'2-digit'}).format(new Date())}`;
+    // ✅ correction de la mise à jour de l’heure
+    $('updated').textContent = `Maj ${new Intl.DateTimeFormat('fr-FR',{hour:'2-digit',minute:'2-digit'}).format(new Date())}`;
 
     // vent pour l’anim pluie
     anim.wind.speed = (data.wind && data.wind.speed) ? data.wind.speed : 0; // m/s
@@ -417,4 +417,4 @@ async function getWeather(){
 // Lancer
 getWeather();
 </script>
-</body>
+</</body>
