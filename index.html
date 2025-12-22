@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Widget Météo – OpenWeather (canvas sur toute la carte, sans barre)</title>
+<title>Widget Météo – OpenWeather (nuages/pluie/neige réalistes)</title>
 <style>
   html, body {
     margin:0; padding:0;
@@ -23,27 +23,20 @@
     box-shadow:0 10px 25px rgba(0,0,0,.35);
     overflow:hidden;
     backdrop-filter: blur(6px);
-    box-sizing: border-box;            /* cohérent pour les mesures CSS */
+    box-sizing: border-box;
   }
 
-  /* Canvas qui couvre TOUTE la carte */
+  /* Canvas couvre TOUTE la carte */
   .bg-canvas {
-    position:absolute;
-    inset:0;
-    z-index:0;
-    width:100%;
-    height:100%;
-    display:block;
+    position:absolute; inset:0; z-index:0;
+    width:100%; height:100%; display:block;
     pointer-events:none;
-    will-change: transform;            /* aide le moteur à stabiliser le rendu */
+    will-change: transform;
     backface-visibility: hidden;
   }
 
-  /* Contenu au-dessus */
-  .header, .main, .grid {
-    position: relative;
-    z-index: 1;
-  }
+  /* Contenu par-dessus */
+  .header, .main, .grid { position: relative; z-index: 1; }
 
   .header {
     display:flex; justify-content:space-between; align-items:center;
@@ -55,8 +48,7 @@
 
   .main {
     display:grid; grid-template-columns:1fr auto; gap:12px;
-    padding:16px;
-    min-height:160px;
+    padding:16px; min-height:160px;
   }
   .temp { font-size:42px; font-weight:700; opacity:.95; }
   .desc { color:#e5e7eb; opacity:.85; text-transform:capitalize; }
@@ -76,7 +68,7 @@
 </head>
 <body>
 <div class="widget" id="widget">
-  <!-- Canvas de fond pour TOUTE la tuile -->
+  <!-- Canvas fond -->
   <canvas id="bg" class="bg-canvas"></canvas>
 
   <div class="header">
@@ -101,190 +93,17 @@
 
 <script>
 // ================== CONFIG ==================
-const API_KEY = "f5f9a18a44029213156c7571d5b0d3f0"; // ⚠️ Démo — évite d’exposer en prod
+const API_KEY = "f5f9a18a44029213156c7571d5b0d3f0"; // ⚠️ Démo — ne pas exposer en prod
 const LAT = 43.7009, LON = 7.2683;
 const W_ICON = (i) => `https://openweathermap.org/img/wn/${i}@2x.png`;
 
-// ================== CANVAS (plein fond) ==================
+// ================== CANVAS SUR TOUTE LA TUILE ==================
 const host = document.getElementById('widget');
 const canvas = document.getElementById('bg');
 const ctx = canvas.getContext('2d');
 
-// Dimensions CSS (entiers) + dpr
 let cssW = 0, cssH = 0, dpr = 1;
 
-// Mesure robuste : clientWidth/Height évite les flottants
 function measureHost(){
-  cssW = host.clientWidth;              // entier en pixels CSS
-  cssH = host.clientHeight;             // entier en pixels CSS
-  dpr = window.devicePixelRatio || 1;
-}
-
-function resizeCanvas(){
-  measureHost();
-
-  // Taille CSS
-  canvas.style.width = `${cssW}px`;
-  canvas.style.height = `${cssH}px`;
-
-  // Taille interne (sur-dimensionnée à l'entier supérieur)
-  canvas.width  = Math.ceil(cssW * dpr);
-  canvas.height = Math.ceil(cssH * dpr);
-
-  // Dessin en unités CSS
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-}
-resizeCanvas();
-
-// ResizeObserver > évite les décalages au reflow
-new ResizeObserver(resizeCanvas).observe(host);
-window.addEventListener('resize', resizeCanvas);
-
-let anim = { type:'none', t:0, clouds:[], rain:[] };
-
-function initClouds(count=7){
-  anim.clouds.length = 0;
-  for(let i=0;i<count;i++){
-    anim.clouds.push({
-      x: Math.random()*cssW,
-      y: 20 + Math.random()*(cssH-40),
-      r: 30 + Math.random()*40,
-      vx: 0.25 + Math.random()*0.45
-    });
-  }
-}
-function drawCloud(c){
-  ctx.fillStyle='rgba(220,220,220,0.92)';
-  ctx.beginPath(); ctx.arc(c.x,c.y,c.r,0,Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(c.x+c.r*0.6,c.y+c.r*0.2,c.r*0.7,0,Math.PI*2); ctx.fill();
-}
-
-function initRain(count=120){
-  anim.rain.length = 0;
-  for(let i=0;i<count;i++){
-    anim.rain.push({
-      x: Math.random()*cssW,
-      y: Math.random()*cssH,
-      len: 6 + Math.random()*10,
-      vy: 3 + Math.random()*4
-    });
-  }
-}
-function drawRain(){
-  ctx.strokeStyle='#00BFFF';
-  ctx.lineWidth=1;
-  for(const d of anim.rain){
-    ctx.beginPath();
-    ctx.moveTo(d.x,d.y);
-    ctx.lineTo(d.x,d.y+d.len);
-    ctx.stroke();
-    d.y += d.vy;
-    if(d.y > cssH){ d.y = -d.len; d.x = Math.random()*cssW; }
-  }
-}
-
-function drawSun(){
-  ctx.fillStyle='#87CEEB';
-  ctx.fillRect(0,0,cssW,cssH);          // peindre toute la surface CSS
-  ctx.beginPath();
-  ctx.arc(cssW/2, cssH/2, 48, 0, Math.PI*2);
-  ctx.fillStyle='#FFD700';
-  ctx.fill();
-}
-
-function setScene(kind){
-  anim.type=kind;
-  if(kind==='clouds') initClouds();
-  else if(['rain','drizzle','thunder'].includes(kind)) initRain();
-}
-
-function loop(){
-  anim.t++;
-
-  // Effacer toute la surface CSS
-  ctx.clearRect(0,0,cssW,cssH);
-
-  if(anim.type==='clear'){ 
-    drawSun(); 
-  } else if(anim.type==='clouds'){
-    ctx.fillStyle='#708090';
-    ctx.fillRect(0,0,cssW,cssH);
-    for(const c of anim.clouds){ 
-      drawCloud(c); 
-      c.x += c.vx; 
-      if(c.x - c.r > cssW) c.x = -c.r; 
-    }
-  } else if(['rain','drizzle','thunder'].includes(anim.type)){
-    ctx.fillStyle='#2F4F4F';
-    ctx.fillRect(0,0,cssW,cssH);
-    drawRain();
-    if(anim.type==='thunder' && (anim.t%120) < 6){
-      ctx.fillStyle='rgba(255,255,255,0.3)';
-      ctx.fillRect(0,0,cssW,cssH);
-    }
-  } else if(anim.type==='snow'){
-    ctx.fillStyle='#b9d6f2';
-    ctx.fillRect(0,0,cssW,cssH);
-  } else {
-    ctx.fillStyle='#6b7280';
-    ctx.fillRect(0,0,cssW,cssH);
-  }
-  requestAnimationFrame(loop);
-}
-requestAnimationFrame(loop);
-
-// ================== WIDGET (données) ==================
-function $(id){ return document.getElementById(id); }
-
-function toScene(main){
-  const m = (main||'').toLowerCase();
-  if(m==='clear') return 'clear';
-  if(m==='clouds') return 'clouds';
-  if(m==='rain') return 'rain';
-  if(m==='drizzle') return 'drizzle';
-  if(m==='thunderstorm') return 'thunder';
-  if(m==='snow') return 'snow';
-  return 'mist';
-}
-
-async function getWeather(){
-  const url=`https://api.openweathermap.org/data/2.5/weather?lat=${LAT}&lon=${LON}&units=metric&lang=fr&appid=${API_KEY}`;
-  try{
-    const res = await fetch(url, { cache: 'no-store' });
-    if(!res.ok){ throw new Error(`HTTP ${res.status}`); }
-    const data = await res.json();
-    if(data.cod && String(data.cod) !== '200'){ throw new Error(data.message || `Code ${data.cod}`); }
-
-    const weather = (data.weather && data.weather[0]) || {};
-    const main = weather.main || '';
-    const desc = weather.description || '—';
-
-    $('temp').textContent = `${Math.round(data.main.temp)}°C`;
-    $('desc').textContent = desc;
-    $('wind').textContent = `${Math.round((data.wind?.speed||0)*3.6)} km/h`;
-    $('humidity').textContent = `${data.main.humidity}%`;
-    $('pressure').textContent = `${data.main.pressure} hPa`;
-
-    const iconCode = weather.icon || '01d';
-    const iconEl = $('icon');
-    iconEl.src = W_ICON(iconCode);
-    iconEl.alt = `Conditions : ${desc}`;
-    iconEl.onerror = () => { iconEl.src = W_ICON('01d'); };
-
-    $('updated').textContent = `Maj ${new Intl.DateTimeFormat('fr-FR',{hour:'2-digit',minute:'2-digit'}).format(new Date())}`;
-
-    setScene(toScene(main));
-  } catch(e){
-    console.error(e);
-    $('updated').textContent = `Erreur de mise à jour`;
-    $('desc').textContent = `Impossible de récupérer la météo`;
-    $('temp').textContent = '--°C';
-  }
-}
-
-// Lancer
-getWeather();
-</script>
-</body>
-</html>
-``
+  cssW = host.clientWidth;     // pixels CSS entiers
+  cssH = host.clientHeight;    // pixels CSS entiers
