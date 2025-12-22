@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Widget Météo – OpenWeather (canvas intégré)</title>
+<title>Widget Météo – OpenWeather (canvas partout)</title>
 <style>
   html, body {
     margin:0; padding:0;
@@ -13,71 +13,75 @@
     display:grid; place-items:center;
     min-height:100vh;
   }
+
   .widget {
+    position: relative;                 /* pour positionner le canvas en fond */
     width:100%; max-width:380px;
     border-radius:14px;
-    background:rgba(15,23,42,0.85);
+    background:rgba(15,23,42,0.85);     /* laisser un léger fond pour la lisibilité */
     border:1px solid #1f2937;
     box-shadow:0 10px 25px rgba(0,0,0,.35);
-    overflow:hidden;
+    overflow:hidden;                    /* arrondis appliqués aussi au canvas */
     backdrop-filter: blur(6px);
   }
-  .header { display:flex; justify-content:space-between; padding:14px 16px; background:rgba(56,189,248,.08); }
-  .city { font-weight:600; }
-  .updated { font-size:12px; color:#9ca3af; }
 
-  /* Le panneau des données, désormais avec canvas en fond */
-  .main {
-    position: relative;                  /* nécessaire pour positionner le canvas en fond */
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 12px;
-    padding: 16px;
-    overflow: hidden;                    /* le canvas ne dépasse pas */
-    min-height: 160px;                   /* pour avoir une surface suffisante */
-  }
-
-  /* Canvas de fond qui couvre tout .main */
+  /* Canvas qui couvre TOUTE la carte */
   .bg-canvas {
-    position: absolute;
-    inset: 0;                            /* top:0; right:0; bottom:0; left:0 */
-    z-index: 0;
-    display: block;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;                /* les clics passent au contenu */
+    position:absolute;
+    inset:0;                            /* top/right/bottom/left: 0 */
+    z-index:0;                          /* sous le contenu */
+    width:100%;
+    height:100%;
+    display:block;
+    pointer-events:none;                /* ne mange pas les clics */
   }
 
-  /* Le contenu est au-dessus du canvas */
-  .main > div,
-  .main > img {
+  /* Tout le contenu passe au-dessus */
+  .header, .main, .grid {
     position: relative;
     z-index: 1;
   }
 
-  .temp { font-size:42px; font-weight:700; }
-  .desc { color:#9ca3af; text-transform:capitalize; }
+  .header {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:14px 16px;
+    background:rgba(56,189,248,.08);   /* semi-transparence pour voir l’anim */
+  }
+  .city { font-weight:600; }
+  .updated { font-size:12px; color:#9ca3af; }
+
+  .main {
+    display:grid; grid-template-columns:1fr auto; gap:12px;
+    padding:16px;
+    min-height:160px;
+  }
+  .temp { font-size:42px; font-weight:700; opacity:.95; }
+  .desc { color:#e5e7eb; opacity:.85; text-transform:capitalize; }
   .icon { width:72px; height:72px; }
 
-  .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; padding:0 16px 16px; }
-  .card { background:#111827; border-radius:12px; padding:12px; text-align:center; }
+  .grid {
+    display:grid; grid-template-columns:repeat(3,1fr); gap:10px;
+    padding:0 16px 16px;
+  }
+  .card {
+    background:rgba(17,24,39,.8);      /* semi-transparent pour laisser passer l’anim */
+    border-radius:12px; padding:12px; text-align:center;
+  }
   .label { font-size:12px; color:#9ca3af; margin-bottom:6px; }
-  .value { font-weight:600; }
+  .value { font-weight:700; }
 </style>
 </head>
 <body>
-<div class="widget">
+<div class="widget" id="widget">
+  <!-- Canvas de fond pour TOUTE la tuile -->
+  <canvas id="bg" class="bg-canvas"></canvas>
+
   <div class="header">
     <div class="city" id="city">Nice, FR</div>
     <div class="updated" id="updated">—</div>
   </div>
 
-  <!-- Bloc principal : le canvas est intégré ici et couvre tout le fond -->
-  <div class="main" id="mainHost">
-    <!-- Canvas en fond -->
-    <canvas id="bg" class="bg-canvas"></canvas>
-
-    <!-- Contenu au-dessus -->
+  <div class="main">
     <div>
       <div class="temp" id="temp">--°C</div>
       <div class="desc" id="desc">—</div>
@@ -94,12 +98,12 @@
 
 <script>
 // ================== CONFIG ==================
-const API_KEY = "f5f9a18a44029213156c7571d5b0d3f0"; // ⚠️ Démo seulement — ne pas exposer en prod
+const API_KEY = "f5f9a18a44029213156c7571d5b0d3f0"; // ⚠️ Démo — évite d’exposer en prod
 const LAT = 43.7009, LON = 7.2683;
 const W_ICON = (i) => `https://openweathermap.org/img/wn/${i}@2x.png`;
 
-// ================== CANVAS ==================
-const host = document.getElementById('mainHost');
+// ================== CANVAS SUR TOUTE LA TUILE ==================
+const host = document.getElementById('widget');  // ✅ toute la carte
 const canvas = document.getElementById('bg');
 const ctx = canvas.getContext('2d');
 
@@ -111,11 +115,11 @@ function resizeCanvas(){
   canvas.style.width = rect.width + 'px';
   canvas.style.height = rect.height + 'px';
 
-  // Taille interne en pixels
+  // Taille interne en pixels (HiDPI)
   canvas.width  = Math.floor(rect.width * dpr);
   canvas.height = Math.floor(rect.height * dpr);
 
-  // Dessiner en coordonnées CSS
+  // Dessin en unités CSS
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 resizeCanvas();
@@ -130,26 +134,26 @@ function initClouds(count=6){
     anim.clouds.push({
       x: Math.random()*w,
       y: 20 + Math.random()*(h-40),
-      r: 20 + Math.random()*30,
-      vx: 0.3 + Math.random()*0.5
+      r: 30 + Math.random()*40,
+      vx: 0.25 + Math.random()*0.45
     });
   }
 }
 function drawCloud(c){
-  ctx.fillStyle='rgba(220,220,220,0.95)';
+  ctx.fillStyle='rgba(220,220,220,0.92)';
   ctx.beginPath(); ctx.arc(c.x,c.y,c.r,0,Math.PI*2); ctx.fill();
   ctx.beginPath(); ctx.arc(c.x+c.r*0.6,c.y+c.r*0.2,c.r*0.7,0,Math.PI*2); ctx.fill();
 }
 
-function initRain(count=80){
+function initRain(count=110){
   const w = host.clientWidth, h = host.clientHeight;
   anim.rain=[];
   for(let i=0;i<count;i++){
     anim.rain.push({
       x: Math.random()*w,
       y: Math.random()*h,
-      len: 6 + Math.random()*8,
-      vy: 3 + Math.random()*3
+      len: 6 + Math.random()*10,
+      vy: 3 + Math.random()*4
     });
   }
 }
@@ -171,7 +175,7 @@ function drawSun(){
   ctx.fillStyle='#87CEEB';
   ctx.fillRect(0,0,w,h);
   ctx.beginPath();
-  ctx.arc(w/2, h/2, 40, 0, Math.PI*2);
+  ctx.arc(w/2, h/2, 48, 0, Math.PI*2);
   ctx.fillStyle='#FFD700';
   ctx.fill();
 }
@@ -213,7 +217,7 @@ function loop(){
 }
 requestAnimationFrame(loop);
 
-// ================== WIDGET ==================
+// ================== WIDGET (données) ==================
 function $(id){ return document.getElementById(id); }
 
 function toScene(main){
@@ -233,7 +237,6 @@ async function getWeather(){
     const res = await fetch(url, { cache: 'no-store' });
     if(!res.ok){ throw new Error(`HTTP ${res.status}`); }
     const data = await res.json();
-    // OpenWeather peut renvoyer cod en string; on normalise
     if(data.cod && String(data.cod) !== '200'){ throw new Error(data.message || `Code ${data.cod}`); }
 
     const weather = (data.weather && data.weather[0]) || {};
@@ -263,7 +266,9 @@ async function getWeather(){
   }
 }
 
-// ✅ Appel correct (remplace l’ancien getgetWeather)
+// Lancer
 getWeather();
 </script>
 </body>
+</html>
+``
