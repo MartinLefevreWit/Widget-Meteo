@@ -2,243 +2,92 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Widget Météo – Nice (OpenWeather)</title>
-  <meta name="description" content="Widget météo simple (OpenWeather) – température, vent, humidité, description." />
-  <style>
-    :root {
-      --bg: #0f172a; --panel: #111827; --text: #e5e7eb; --muted: #9ca3af;
-      --accent: #38bdf8; --radius: 14px; --shadow: 0 10px 25px rgba(0,0,0,.35);
-      --danger: #ef4444;
-    }
-    * { box-sizing: border-box; }
-    html, body { margin:0; padding:0; background:var(--bg); color:var(--text);
-      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Noto Sans", sans-serif; }
-    .wrapper { padding:12px; min-height:100dvh; display:grid; place-items:center; }
-    .widget { width:100%; max-width:380px; border-radius:var(--radius);
-      background: linear-gradient(180deg,#0b1220 0%,#0f172a 100%);
-      border:1px solid #1f2937; box-shadow:var(--shadow); overflow:hidden; }
-    .header { display:flex; align-items:center; gap:12px; padding:14px 16px;
-      background: rgba(56,189,248,.08); border-bottom:1px solid #1f2937; }
-    .city { font-weight:600; letter-spacing:.2px; }
-    .updated { margin-left:auto; font-size:12px; color:var(--muted); }
-    .main { display:grid; grid-template-columns:1fr auto; gap:12px; padding:16px; }
-    .temp { font-size:42px; font-weight:700; line-height:1; }
-    .desc { margin-top:4px; color:var(--muted); text-transform:capitalize; }
-    .icon { width:72px; height:72px; filter: drop-shadow(0 4px 8px rgba(0,0,0,.25)); }
-    .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; padding:0 16px 16px; }
-    .card { background:var(--panel); border:1px solid #1f2937; border-radius:12px; padding:12px; text-align:center; }
-    .label { font-size:12px; color:var(--muted); margin-bottom:6px; }
-    .value { font-weight:600; }
-    .error { padding:14px 16px; color:var(--danger); background:rgba(239,68,68,.08);
-      border-top:1px solid rgba(239,68,68,.3); font-size:14px; display:none; }
-    .footer { padding:10px 16px; font-size:12px; color:var(--muted); border-top:1px solid #1f2937; }
-    a { color: var(--accent); text-decoration: none; }
-
-    /* Panneau debug */
-    .debug {
-      width:100%; max-width:680px; margin:24px auto 0; border-radius:12px;
-      background: rgba(239,68,68,.08); border:1px solid rgba(239,68,68,.3);
-      color: var(--text); display:none;
-    }
-    .debug h3 { margin:0; padding:12px 14px; font-size:14px; color:var(--danger); border-bottom:1px solid rgba(239,68,68,.3); }
-    .debug .content { padding:12px 14px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size:12px; }
-    .debug pre { margin:0; white-space:pre-wrap; word-wrap:break-word; }
-    .debug .row { margin-bottom:10px; }
-    .debug .row b { color:#fca5a5; }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Widget Météo – OpenWeather</title>
+<style>
+  html, body {
+    margin:0; padding:0;
+    background:#0f172a; color:#e5e7eb;
+    font-family: system-ui, sans-serif;
+    overflow:hidden;
+  }
+  canvas {
+    position:fixed; top:0; left:0;
+    width:100vw; height:100vh;
+    z-index:-1;
+  }
+  .wrapper {
+    display:grid; place-items:center;
+    min-height:100vh;
+  }
+  .widget {
+    width:100%; max-width:380px;
+    border-radius:14px;
+    background:rgba(15,23,42,0.85);
+    border:1px solid #1f2937;
+    box-shadow:0 10px 25px rgba(0,0,0,.35);
+    overflow:hidden;
+    backdrop-filter: blur(6px);
+  }
+  .header { display:flex; justify-content:space-between; padding:14px 16px; background:rgba(56,189,248,.08); }
+  .city { font-weight:600; }
+  .updated { font-size:12px; color:#9ca3af; }
+  .main { display:grid; grid-template-columns:1fr auto; gap:12px; padding:16px; }
+  .temp { font-size:42px; font-weight:700; }
+  .desc { color:#9ca3af; text-transform:capitalize; }
+  .icon { width:72px; height:72px; }
+  .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; padding:0 16px 16px; }
+  .card { background:#111827; border-radius:12px; padding:12px; text-align:center; }
+  .label { font-size:12px; color:#9ca3af; margin-bottom:6px; }
+  .value { font-weight:600; }
+</style>
 </head>
 <body>
-  <div class="wrapper">
-    <div>
-      <!-- Widget -->
-      <div class="widget" role="region" aria-label="Widget météo">
-        <div class="header">
-          <div class="city" id="city">Nice, FR</div>
-          <div class="updated" id="updated">—</div>
-        </div>
-
-        <div class="main">
-          <div>
-            <div class="temp" id="temp">--°C</div>
-            <div class="desc" id="desc">—</div>
-          </div>
-          <img class="icon" id="icon" alt="Icône météo" />
-        </div>
-
-        <div class="grid" aria-label="Détails météo">
-          <div class="card">
-            <div class="label">Vent</div>
-            <div class="value" id="wind">—</div>
-          </div>
-          <div class="card">
-            <div class="label">Humidité</div>
-            <div class="value" id="humidity">—</div>
-          </div>
-          <div class="card">
-            <div class="label">Pression</div>
-            <div class="value" id="pressure">—</div>
-          </div>
-        </div>
-
-        <div class="error" id="error"></div>
-        <div class="footer">
-          Source : https://openweathermap.org/OpenWeather</a>
-        </div>
+<canvas id="bg"></canvas>
+<div class="wrapper">
+  <div class="widget">
+    <div class="header">
+      <div class="city" id="city">Nice, FR</div>
+      <div class="updated" id="updated">—</div>
+    </div>
+    <div class="main">
+      <div>
+        <div class="temp" id="temp">--°C</div>
+        <div class="desc" id="desc">—</div>
       </div>
-
-      <!-- Panneau debug (affiché automatiquement si erreur) -->
-      <div class="debug" id="debug">
-        <h3>Debug API OpenWeather</h3>
-        <div class="content">
-          <div class="row"><b>URL appelée :</b> <span id="dbg-url">—</span></div>
-          <div class="row"><b>Statut :</b> <span id="dbg-status">—</span></div>
-          <div class="row"><b>Message :</b> <span id="dbg-msg">—</span></div>
-          <div class="row"><b>Réponse brute :</b></div>
-          <pre id="dbg-body">—</pre>
-        </div>
-      </div>
+      <img class="icon" id="icon" alt="Icône météo" />
+    </div>
+    <div class="grid">
+      <div class="card"><div class="label">Vent</div><div class="value" id="wind">—</div></div>
+      <div class="card"><div class="label">Humidité</div><div class="value" id="humidity">—</div></div>
+      <div class="card"><div class="label">Pression</div><div class="value" id="pressure">—</div></div>
     </div>
   </div>
+</div>
 
-  <script type="module">
-    // =============== CONFIG ===============
-    const CITY = "Nice";
-    const COUNTRY = "FR";
-    const LAT = 43.7009;
-    const LON = 7.2683;
+<script>
+const API_KEY = "TA_CLE_ICI"; // Remplace par ta clé OpenWeather
+const LAT = 43.7009, LON = 7.2683;
+const canvas = document.getElementById('bg');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 
-    // ⚠️ Clé seule (ne pas mettre l'URL ici)
-    const API_KEY = "f5f9a18a44029213156c7571d5b0d3f0";
-    const USE_PROXY = false; // passe à true si tu utilises un proxy Netlify/Cloudflare
-
-    // Si USE_PROXY = true, configure PROXY_URL (Netlify Functions ou Cloudflare Worker)
-    const PROXY_URL = "/.netlify/functions/openweather-proxy";
-
-    // Cache local (10 minutes)
-    const TTL_MS = 10 * 60 * 1000;
-
-    // =============== HELPERS UI ===============
-    const $ = (id) => document.getElementById(id);
-    const showError = (msg) => { const el = $('error'); el.textContent = msg; el.style.display = 'block'; };
-    const formatTime = (d = new Date()) => new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' }).format(d);
-    const owmIconUrl = (icon) => `https://openweathermap.org/img/wn/${icon}@2x.png`;
-
-    // Debug helpers
-    function openDebug({ url, status, message, body }) {
-      $('debug').style.display = 'block';
-      $('dbg-url').textContent = url || '—';
-      $('dbg-status').textContent = typeof status !== 'undefined' ? String(status) : '—';
-      $('dbg-msg').textContent = message || '—';
-      $('dbg-body').textContent = body || '—';
-    }
-
-    // =============== URL BUILDER ===============
-    function buildUrl() {
-      if (USE_PROXY) {
-        const url = new URL(PROXY_URL, location.origin);
-        url.searchParams.set("lat", LAT);
-        url.searchParams.set("lon", LON);
-        url.searchParams.set("units", "metric");
-        url.searchParams.set("lang", "fr");
-        return url.toString();
-      }
-      const url = new URL("https://api.openweathermap.org/data/2.5/weather");
-      url.searchParams.set("lat", LAT);
-      url.searchParams.set("lon", LON);
-      url.searchParams.set("units", "metric");
-      url.searchParams.set("lang", "fr");
-      url.searchParams.set("appid", API_KEY); // <-- clé seule
-      return url.toString();
-    }
-
-    // =============== FETCH ===============
-    async function getWeather() {
-      const cacheKey = `owm:${LAT},${LON}:weather`;
-      const cachedRaw = localStorage.getItem(cacheKey);
-      if (cachedRaw) {
-        try {
-          const cached = JSON.parse(cachedRaw);
-          if (Date.now() - cached.ts < TTL_MS) return cached.data;
-        } catch {}
-      }
-
-      const url = buildUrl();
-      let res;
-      try {
-        res = await fetch(url, { cache: 'no-store' });
-      } catch (netErr) {
-        openDebug({ url, status: '—', message: `Erreur réseau (fetch) : ${netErr?.message || netErr}`, body: '' });
-        throw new Error(`Erreur réseau (fetch) : ${netErr?.message || netErr}`);
-      }
-
-      const textBody = await res.text(); // lis le corps une fois
-      // Re-crée un Response pour pouvoir faire .json() ensuite si OK
-      const cloned = new Response(textBody, { status: res.status, statusText: res.statusText, headers: res.headers });
-
-      if (!cloned.ok) {
-        openDebug({ url, status: cloned.status, message: cloned.statusText, body: textBody });
-        const msg = cloned.status === 401 ? "Clé API invalide (401). Vérifie API_KEY."
-                  : cloned.status === 404 ? "Coordonnées introuvables (404)."
-                  : `Erreur API (${cloned.status})`;
-        throw new Error(`${msg} : ${textBody}`);
-      }
-
-      let data;
-      try {
-        data = await cloned.json();
-      } catch (parseErr) {
-        openDebug({ url, status: cloned.status, message: `Réponse non-JSON`, body: textBody });
-        throw new Error(`Réponse non-JSON : ${parseErr?.message || parseErr}`);
-      }
-
-      localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data }));
-      return data;
-    }
-
-    // =============== RENDER ===============
-    function render(data) {
-      const temp      = data?.main?.temp;
-      const humidity  = data?.main?.humidity;
-      const pressure  = data?.main?.pressure;
-      const windMs    = data?.wind?.speed ?? null;
-      const windKmh   = Number.isFinite(windMs) ? Math.round(windMs * 3.6) : null;
-      const desc      = data?.weather?.[0]?.description || '—';
-      const icon      = data?.weather?.[0]?.icon || '01d';
-
-      $('city').textContent      = `${CITY}, ${COUNTRY}`;
-      $('temp').textContent      = Number.isFinite(temp) ? `${Math.round(temp)}°C` : '--°C';
-      $('desc').textContent      = desc;
-      $('wind').textContent      = Number.isFinite(windKmh) ? `${windKmh} km/h` : '—';
-      $('humidity').textContent  = Number.isFinite(humidity) ? `${Math.round(humidity)}%` : '—';
-      $('pressure').textContent  = Number.isFinite(pressure) ? `${Math.round(pressure)} hPa` : '—';
-      $('icon').src              = owmIconUrl(icon);
-      $('icon').alt              = `Météo : ${desc}`;
-      $('updated').textContent   = `Maj ${formatTime()}`;
-    }
-
-    // =============== BOOTSTRAP ===============
-    (async () => {
-      try {
-        const data = await getWeather();
-        render(data);
-        // ferme le debug si jamais ouvert
-        $('debug').style.display = 'none';
-        console.info("[Widget-Meteo] OK", data);
-      } catch (e) {
-        console.error("[Widget-Meteo] Échec :", e);
-        showError(e.message || "Erreur météo");
-      }
-    })();
-
-    // Petit raccourci pour vider le cache local via clavier (Alt+L)
-    window.addEventListener('keydown', (ev) => {
-      if (ev.altKey && ev.key.toLowerCase() === 'l') {
-        localStorage.clear();
-        location.reload();
-      }
-    });
-  </script>
-</body>
-</html>
+// Animation pluie
+let drops = [];
+function initRain() {
+  drops = [];
+  for(let i=0;i<150;i++){
+    drops.push({x:Math.random()*canvas.width,y:Math.random()*canvas.height,length:10,speed:4+Math.random()*4});
+  }
+}
+function drawRain() {
+  ctx.strokeStyle='#00BFFF';
+  ctx.lineWidth=1;
+  for(let d of drops){
+    ctx.beginPath();
+    ctx.moveTo(d.x,d.y);
+    ctx.lineTo(d.x,d.y+d.length);
+    ctx.stroke();
+    d.y+=d.speed;
