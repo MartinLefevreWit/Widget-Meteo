@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Widget Météo – OpenWeather (nuages doux, légère respiration)</title>
+<title>Widget Météo – OpenWeather (nuages doux, respiration visible + micro-dérive)</title>
 <style>
   html, body {
     margin:0; padding:0;
@@ -26,7 +26,6 @@
     box-sizing: border-box;
   }
 
-  /* Canvas couvre TOUTE la carte */
   .bg-canvas {
     position:absolute; inset:0; z-index:0;
     width:100%; height:100%; display:block;
@@ -35,7 +34,6 @@
     backface-visibility: hidden;
   }
 
-  /* Contenu par-dessus */
   .header, .main, .grid { position: relative; z-index: 1; }
 
   .header {
@@ -68,7 +66,6 @@
 </head>
 <body>
 <div class="widget" id="widget">
-  <!-- Canvas fond -->
   <canvas id="bg" class="bg-canvas"></canvas>
 
   <div class="header">
@@ -97,7 +94,7 @@ const API_KEY = "f5f9a18a44029213156c7571d5b0d3f0"; // ⚠️ Démo — ne pas e
 const LAT = 43.7009, LON = 7.2683;
 const W_ICON = (i) => `https://openweathermap.org/img/wn/${i}@2x.png`;
 
-// ================== CANVAS SUR TOUTE LA TUILE ==================
+// ================== CANVAS ==================
 const host = document.getElementById('widget');
 const canvas = document.getElementById('bg');
 const ctx = canvas.getContext('2d');
@@ -105,8 +102,8 @@ const ctx = canvas.getContext('2d');
 let cssW = 0, cssH = 0, dpr = 1;
 
 function measureHost(){
-  cssW = host.clientWidth;     // pixels CSS entiers
-  cssH = host.clientHeight;    // pixels CSS entiers
+  cssW = host.clientWidth;
+  cssH = host.clientHeight;
   dpr  = window.devicePixelRatio || 1;
 }
 function resizeCanvas(){
@@ -115,7 +112,7 @@ function resizeCanvas(){
   canvas.style.height = `${cssH}px`;
   canvas.width  = Math.ceil(cssW * dpr);
   canvas.height = Math.ceil(cssH * dpr);
-  ctx.setTransform(dpr,0,0,dpr,0,0); // dessiner en unités CSS
+  ctx.setTransform(dpr,0,0,dpr,0,0);
 }
 resizeCanvas();
 new ResizeObserver(resizeCanvas).observe(host);
@@ -125,20 +122,21 @@ window.addEventListener('resize', resizeCanvas);
 let anim = {
   type:'none',
   t:0,
-  clouds:[],   // { x, y, alpha, lobes:[{dx0,dy0,r,ax,ay,phaseX,phaseY,freqX,freqY}] }
+  clouds:[],   // { x0,y0, alpha, wobble:{ax,ay,phaseX,phaseY,freqX,freqY}, lobes:[{dx0,dy0,r,ax,ay,phaseX,phaseY,freqX,freqY}] }
   rain:[],
   snow:[],
-  wind:{ speed:0, deg:0 } // m/s et degrés météo (0=N, 90=E)
+  wind:{ speed:0, deg:0 }
 };
 
-// amplitude (en px) de la respiration des lobes
-const CLOUD_WOBBLE = 1.2;           // ciel nuageux
-const CLOUD_WOBBLE_MIST = 0.6;      // brume (plus discret)
+// amplitudes visibles mais subtiles
+const CLOUD_WOBBLE = 1.8;          // respiration des lobes (nuages)
+const CLOUD_WOBBLE_MIST = 1.0;     // respiration en brume
+const CLOUD_DRIFT = 1.6;           // micro-dérive globale (px)
+const CLOUD_DRIFT_FREQ = 0.0006;   // fréquence très lente
 
 // ================== OUTILS ==================
 function $(id){ return document.getElementById(id); }
 
-// Dégradé ciel selon type (un peu plus doux qu'un aplât)
 function paintSky(colorA='#708090', colorB='#667788'){
   const g = ctx.createLinearGradient(0,0,0,cssH);
   g.addColorStop(0, colorA);
@@ -147,53 +145,64 @@ function paintSky(colorA='#708090', colorB='#667788'){
   ctx.fillRect(0,0,cssW,cssH);
 }
 
-// ================== NUAGES — formes fixes avec légère respiration ==================
+// ================== NUAGES ==================
 function initClouds(count=7){
   anim.clouds.length = 0;
-  // densité globale adaptée à la taille
   count = Math.max(4, Math.round(count * (cssW/380)));
   for(let i=0;i<count;i++){
-    const baseR = 26 + Math.random()*36;                 // taille globale
-    const puffCount = 4 + Math.floor(Math.random()*2);   // 4..5 lobes
-    const alpha = 0.58 + Math.random()*0.18;             // translucide
+    const baseR = 26 + Math.random()*36;
+    const puffCount = 4 + Math.floor(Math.random()*2);
+    const alpha = 0.58 + Math.random()*0.18;
 
-    // lobes fixes + paramètres d’oscillation
+    // légère dérive globale par nuage
+    const wobble = {
+      ax: CLOUD_DRIFT * (0.6 + Math.random()*0.6), // amplitude X
+      ay: CLOUD_DRIFT * (0.6 + Math.random()*0.6), // amplitude Y
+      phaseX: Math.random()*Math.PI*2,
+      phaseY: Math.random()*Math.PI*2,
+      freqX: CLOUD_DRIFT_FREQ * (0.8 + Math.random()*0.6),
+      freqY: CLOUD_DRIFT_FREQ * (0.8 + Math.random()*0.6)
+    };
+
     const lobes = [];
     for(let p=0;p<puffCount;p++){
       const dx0 = (Math.random()-0.5) * baseR * 0.85;
       const dy0 = (Math.random()-0.5) * baseR * 0.50;
       const r   = baseR * (0.55 + Math.random()*0.30);
-      // petites oscillations indépendantes
-      const ax = 0.6 + Math.random()*0.8;            // amplitude X (px)
-      const ay = 0.6 + Math.random()*0.8;            // amplitude Y (px)
+      const ax = 1.0 + Math.random()*1.0;            // amplitude X pour le lobe
+      const ay = 1.0 + Math.random()*1.0;            // amplitude Y pour le lobe
       const phaseX = Math.random()*Math.PI*2;
       const phaseY = Math.random()*Math.PI*2;
-      const freqX = 0.0012 + Math.random()*0.0015;   // Hz approx via t (frame)
-      const freqY = 0.0010 + Math.random()*0.0016;
+      const freqX = 0.0016 + Math.random()*0.0014;   // plus visibles
+      const freqY = 0.0014 + Math.random()*0.0016;
       lobes.push({ dx0, dy0, r, ax, ay, phaseX, phaseY, freqX, freqY });
     }
 
     anim.clouds.push({
-      x: Math.random()*cssW,              // position globale (statique)
-      y: 30 + Math.random()*(cssH-90),
+      x0: Math.random()*cssW,
+      y0: 30 + Math.random()*(cssH-90),
       alpha,
+      wobble,
       lobes
     });
   }
 }
+
+// dessine un nuage avec respiration + micro-dérive
 function drawCloud(c, wobbleAmp = CLOUD_WOBBLE){
-  // ombre douce
+  // micro-dérive globale très lente
+  const t = anim.t;
+  const gx = c.x0 + Math.sin(c.wobble.phaseX + t*c.wobble.freqX) * c.wobble.ax;
+  const gy = c.y0 + Math.sin(c.wobble.phaseY + t*c.wobble.freqY) * c.wobble.ay;
+
   ctx.shadowColor = `rgba(255,255,255,${Math.min(0.40, c.alpha)})`;
   ctx.shadowBlur  = 8;
 
-  const t = anim.t;
   for(const l of c.lobes){
-    // légère respiration (± ~1 px) sur chaque lobe
     const dx = l.dx0 + Math.sin(l.phaseX + t*l.freqX) * l.ax * wobbleAmp;
     const dy = l.dy0 + Math.sin(l.phaseY + t*l.freqY) * l.ay * wobbleAmp;
-
-    const px = c.x + dx;
-    const py = c.y + dy;
+    const px = gx + dx;
+    const py = gy + dy;
 
     const grad = ctx.createRadialGradient(px, py, l.r*0.25, px, py, l.r);
     grad.addColorStop(0, `rgba(255,255,255,${c.alpha})`);
@@ -342,28 +351,23 @@ function loop(){
   else if(anim.type==='snow'){ paintSky('#b9d6f2','#a8c9ea'); }
   else { paintSky('#6b7280','#606872'); } // mist par défaut
 
-  // couches selon type
+  // couches
   if(anim.type==='clouds'){
     for(const c of anim.clouds){
-      // légère respiration des lobes (wobble standard)
       drawCloud(c, CLOUD_WOBBLE);
     }
   } else if(anim.type==='rain' || anim.type==='drizzle'){
-    drawRain();
-    drawMist();
+    drawRain(); drawMist();
   } else if(anim.type==='thunder'){
-    drawRain();
-    drawMist();
+    drawRain(); drawMist();
     if(anim.t % 140 === 0) drawLightning();
   } else if(anim.type==='snow'){
-    drawSnow();
-    drawMist();
+    drawSnow(); drawMist();
   } else { // mist
     if(anim.clouds.length===0) initClouds(4);
     for(const c of anim.clouds){
       const oldAlpha = c.alpha;
       c.alpha = 0.50;
-      // wobble plus discret en brume
       drawCloud(c, CLOUD_WOBBLE_MIST);
       c.alpha = oldAlpha;
     }
@@ -384,11 +388,10 @@ function toSceneFromMain(main){
   if(m==='thunderstorm') return 'thunder';
   if(m==='snow') return 'snow';
   if(['mist','haze','fog','smoke','dust'].includes(m)) return 'mist';
-  return 'clouds'; // fallback neutre
+  return 'clouds';
 }
 
 async function getWeather(){
-  // ⚠️ JS doit utiliser & bruts (pas d’entités HTML)
   const url = `https://api.openweathermap.org/data/2.5/weather?lat=${LAT}&lon=${LON}&units=metric&lang=fr&appid=${API_KEY}`;
   try{
     const res = await fetch(url, { cache: 'no-store' });
@@ -412,10 +415,8 @@ async function getWeather(){
     iconEl.alt = `Conditions : ${desc}`;
     iconEl.onerror = () => { iconEl.src = W_ICON('01d'); };
 
-    // ✅ correction de la mise à jour de l’heure
     $('updated').textContent = `Maj ${new Intl.DateTimeFormat('fr-FR',{hour:'2-digit',minute:'2-digit'}).format(new Date())}`;
 
-    // vent pour l’anim pluie
     anim.wind.speed = (data.wind && data.wind.speed) ? data.wind.speed : 0; // m/s
     anim.wind.deg   = (data.wind && data.wind.deg)   ? data.wind.deg   : 0;
 
@@ -430,6 +431,6 @@ async function getWeather(){
 }
 
 // Lancer
-getWeather();
+getgetWeather();
 </script>
-</</body>
+</body>
