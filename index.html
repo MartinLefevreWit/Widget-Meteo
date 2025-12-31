@@ -491,7 +491,7 @@ function loop(){
 
   // Fond + décor
   if(anim.type==='clear'){
-    drawClearExtras();        // >>> ciel + soleil + cirrus (améliorés)
+    drawClearExtras();        // ciel + soleil + cirrus (améliorés)
   } else {
     // fond météo
     if(anim.type==='clouds'){ paintSky('#7f93a5','#70859a'); }
@@ -533,8 +533,8 @@ function toSceneFromMain(main){
 }
 
 async function getWeather(){
-  // ⚠️ JS doit utiliser & bruts (pas d'entités HTML) — ici je garde ta version telle quelle
-  const url = `https://api.openweathermap.org/data/2.5/weather?lat=${LAT}&amp;lon=${LON}&amp;units=metric&amp;lang=fr&amp;appid=${API_KEY}`;
+  // ✅ CORRECTION: & bruts (pas &amp;)
+  const url = `https://api.openweathermap.org/data/2.5/weather?lat=${LAT}&lon=${LON}&units=metric&lang=fr&appid=${API_KEY}`;
   try{
     const res = await fetch(url, { cache: 'no-store' });
     if(!res.ok){ throw new Error(`HTTP ${res.status}`); }
@@ -563,7 +563,11 @@ async function getWeather(){
     anim.wind.deg   = (data.wind && data.wind.deg)   ? data.wind.deg   : 0;
 
     setScene(toSceneFromMain(main));
-    $('city').textContent = 'Nice, FR'; // adapte si tu changes LAT/LON
+
+    // Ville dynamique si dispo
+    const cityName = (data.name || 'Nice');
+    const country  = ((data.sys && data.sys.country) || 'FR');
+    $('city').textContent = `${cityName}, ${country}`;
   } catch(e){
     console.error(e);
     $('updated').textContent = `Erreur de mise à jour`;
@@ -578,3 +582,4 @@ getWeather();
 </script>
 </body>
 </html>
+``
