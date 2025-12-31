@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Widget Météo – Clear réaliste + nuages réalistes</title>
+<title>Widget Météo – Clear réaliste + nuages réalistes (amélioré)</title>
 <style>
   html, body {
     margin:0; padding:0;
@@ -39,15 +39,18 @@
   }
 
   /* Lisibilité renforcée */
-  .city     { font-weight:600; color:#1f2937; text-shadow:0 1px 3px rgba(0,0,0,0.4); }
-  .updated  { font-size:12px; color:#1f2937; text-shadow:0 1px 3px rgba(0,0,0,0.4); }
+  .city, .updated, .temp, .desc {
+    font-weight:600; color:#e5e7eb;
+    text-shadow:0 1px 2px rgba(0,0,0,0.35);
+  }
+  .updated { font-size:12px; font-weight:500; }
 
   .main {
     display:grid; grid-template-columns:1fr auto; gap:12px;
     padding:16px; min-height:160px;
   }
-  .temp { font-size:42px; font-weight:700; opacity:.95; color:#1f2937; text-shadow:0 1px 3px rgba(0,0,0,0.4); }
-  .desc { font-size:18px; font-weight:500; opacity:.95; color:#1f2937; text-shadow:0 1px 3px rgba(0,0,0,0.4); text-transform:capitalize; }
+  .temp { font-size:42px; font-weight:700; opacity:.95; }
+  .desc { font-size:18px; font-weight:500; opacity:.95; text-transform:capitalize; }
   .icon { width:72px; height:72px; }
 
   .grid {
@@ -59,7 +62,6 @@
     border-radius:12px; padding:12px; text-align:center;
   }
   .label { font-size:12px; color:#9ca3af; margin-bottom:6px; }
-  /* Valeurs plus claires et lisibles dans cartes */
   .value { font-weight:700; color:#e2e8f0; text-shadow:0 1px 2px rgba(0,0,0,0.28); }
 </style>
 </head>
@@ -123,21 +125,78 @@ let anim = {
 
 // ================== OUTILS ==================
 function $(id){ return document.getElementById(id); }
-function paintSky(colorTop='#66b6e7', colorBottom='#8fd3ff'){
-  // dégradé atmosphérique (haut plus saturé, bas plus clair)
-  const g = ctx.createLinearGradient(0,0,0,cssH);
-  g.addColorStop(0, colorTop);
-  g.addColorStop(0.6, '#7fc2ee');
-  g.addColorStop(1, colorBottom);
-  ctx.fillStyle = g;
-  ctx.fillRect(0,0,cssW,cssH);
 
-  // léger éclaircissement d'horizon (voile)
+// ---------- JOUR/NUIT & PALETTE ----------
+const SceneConfig = {
+  clear:   { top:'#5fb3e7', mid:'#7cc5ee', bottom:'#9ad7ff', fog:0.00 },
+  clouds:  { top:'#7490a6', mid:'#6b839b', bottom:'#6f879d', fog:0.10 },
+  rain:    { top:'#586a76', mid:'#546671', bottom:'#4e5f6b', fog:0.18 },
+  drizzle: { top:'#5e6f7b', mid:'#596a76', bottom:'#52636f', fog:0.14 },
+  thunder: { top:'#3e4e58', mid:'#394851', bottom:'#33424b', fog:0.22 },
+  snow:    { top:'#b6d2ef', mid:'#a9c9ea', bottom:'#a0c2e7', fog:0.16 },
+  mist:    { top:'#6b7280', mid:'#656d79', bottom:'#606872', fog:0.20 },
+};
+let dayCycle = { hour: new Date().getHours(), sunX: 0, sunY: 0, sunR: 42, night: false };
+
+function updateDayCycle(){
+  const h = new Date().getHours();
+  dayCycle.hour = h;
+  const isDay = (h >= 6 && h <= 20);
+  dayCycle.night = !isDay;
+  const t = isDay ? (h - 6) / 14 : 0;
+  dayCycle.sunX = cssW * (0.15 + 0.7*t);
+  dayCycle.sunY = cssH * (0.25 - 0.12*Math.sin(t*Math.PI));
+  dayCycle.sunR = 36 + 10*Math.sin(t*Math.PI);
+}
+function lerpColor(a,b,t){
+  const ai=parseInt(a.slice(1),16), bi=parseInt(b.slice(1),16);
+  const ar=(ai>>16)&255, ag=(ai>>8)&255, ab=ai&255;
+  const br=(bi>>16)&255, bg=(bi>>8)&255, bb=bi&255;
+  const r=Math.round(ar+(br-ar)*t), g=Math.round(ag+(bg-ag)*t), b2=Math.round(ab+(bb-ab)*t);
+  return `rgb(${r},${g},${b2})`;
+}
+function paintSkyScene(){
+  const cfg = SceneConfig[anim.type] || SceneConfig.clouds;
+  const dayT = dayCycle.night ? 0 : 1;
+  const top    = lerpColor(cfg.top,    '#58ace0', 0.15*dayT);
+  const mid    = lerpColor(cfg.mid,    '#76c1ea', 0.10*dayT);
+  const bottom = lerpColor(cfg.bottom, '#95d4ff', 0.10*dayT);
+  const g = ctx.createLinearGradient(0,0,0,cssH);
+  g.addColorStop(0, top); g.addColorStop(0.6, mid); g.addColorStop(1, bottom);
+  ctx.fillStyle = g; ctx.fillRect(0,0,cssW,cssH);
   const h = ctx.createLinearGradient(0, cssH*0.55, 0, cssH);
   h.addColorStop(0, 'rgba(255,255,255,0)');
-  h.addColorStop(1, 'rgba(255,255,255,0.15)');
-  ctx.fillStyle = h;
-  ctx.fillRect(0, cssH*0.55, cssW, cssH*0.45);
+  h.addColorStop(1, dayCycle.night ? 'rgba(200,220,255,0.08)' : 'rgba(255,255,255,0.15)');
+  ctx.fillStyle = h; ctx.fillRect(0, cssH*0.55, cssW, cssH*0.45);
+}
+function drawSunMoon(){
+  if(dayCycle.night){
+    ctx.save(); ctx.globalAlpha = 0.65;
+    for(let i=0;i<40;i++){
+      const x = (i*97 % cssW), y = (i*37 % (cssH*0.6));
+      const r = (i%7===0)?1.6:1.0;
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+    const moonX = cssW*0.78, moonY = cssH*0.20, r = 22;
+    const grad = ctx.createRadialGradient(moonX, moonY, r*0.25, moonX, moonY, r);
+    grad.addColorStop(0, 'rgba(220,235,255,1)'); grad.addColorStop(1, 'rgba(220,235,255,0)');
+    ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(moonX, moonY, r, 0, Math.PI*2); ctx.fill();
+    ctx.save(); ctx.globalAlpha=0.18; ctx.filter='blur(1.6px)';
+    ctx.beginPath(); ctx.arc(moonX, moonY, r+14, 0, Math.PI*2); ctx.fill();
+    ctx.filter='none'; ctx.restore();
+  } else {
+    const t = anim.t;
+    const sunX = dayCycle.sunX, sunY = dayCycle.sunY;
+    const r    = dayCycle.sunR + Math.sin(t*0.02)*2.5;
+    const grad = ctx.createRadialGradient(sunX, sunY, r*0.25, sunX, sunY, r);
+    grad.addColorStop(0, 'rgba(255,245,200,1)'); grad.addColorStop(1, 'rgba(255,245,200,0)');
+    ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(sunX, sunY, r, 0, Math.PI*2); ctx.fill();
+    ctx.save(); ctx.globalAlpha = 0.22; ctx.filter = 'blur(1.6px)';
+    ctx.beginPath(); ctx.arc(sunX, sunY, r+18, 0, Math.PI*2); ctx.fill();
+    ctx.filter='none'; ctx.restore();
+  }
 }
 
 // ================== BRUIT (Perlin-like) + fBm ==================
@@ -192,7 +251,6 @@ const cloudLayers = [
   { baseScale: 2.8, detailMix: 0.25, threshold: 0.48, alpha: 0.80, evolveX: 0.010, evolveY: 0.004 }, // proche
   { baseScale: 3.6, detailMix: 0.20, threshold: 0.52, alpha: 0.60, evolveX: 0.006, evolveY: 0.002 }  // lointain
 ];
-
 let cloudA=null, ctxA=null, cloudB=null, ctxB=null;
 function ensureCloudCanvases(){
   const w = Math.max(140, Math.round(cssW*0.45)); // petite résolution => douceur
@@ -210,7 +268,6 @@ function renderLayer(offCtx, layer, time){
   const ow = offCtx.canvas.width, oh = offCtx.canvas.height;
   const img = offCtx.getImageData(0,0,ow,oh);
   const data = img.data;
-
   for(let y=0;y<oh;y++){
     const yy = y/oh;
     for(let x=0;x<ow;x++){
@@ -219,12 +276,9 @@ function renderLayer(offCtx, layer, time){
       const ny = yy*layer.baseScale + time*layer.evolveY;
       const base = Noise.fbm2d(nx, ny, 3);
       const cover = smoothstep(layer.threshold-0.10, layer.threshold+0.08, base);
-
       const det = Noise.fbm2d(nx*2.2, ny*2.2, 2);
       let a = cover * (0.65 + det*layer.detailMix);
-      a = Math.pow(a, 1.15);
-      a *= layer.alpha;
-
+      a = Math.pow(a, 1.15); a *= layer.alpha;
       const idx = (y*ow + x)*4;
       data[idx+0] = 246; data[idx+1] = 250; data[idx+2] = 255; // blanc bleuté
       data[idx+3] = Math.floor(a*255);
@@ -232,23 +286,8 @@ function renderLayer(offCtx, layer, time){
   }
   offCtx.putImageData(img,0,0);
 }
-function drawClouds(){
-  ensureCloudCanvases();
-  const t = anim.t * 0.002;
-  renderLayer(ctxB, cloudLayers[1], t*0.85);
-  renderLayer(ctxA, cloudLayers[0], t);
 
-  ctx.save();
-  ctx.imageSmoothingEnabled = true;
-  ctx.filter = 'blur(1.2px)';
-  ctx.globalAlpha = 1.0;
-  ctx.drawImage(cloudB, 0, 0, cssW, cssH);
-  ctx.drawImage(cloudA, 0, 0, cssW, cssH);
-  ctx.filter = 'none';
-  ctx.restore();
-}
-
-// ================== CLEAR SKY (Soleil + Cirrus procéduraux fins) ==================
+// ================== CLEAR SKY (Cirrus améliorés) ==================
 let cirrusCanvas=null, cirrusCtx=null;
 function ensureCirrusCanvas(){
   const w = Math.max(140, Math.round(cssW*0.50));
@@ -260,63 +299,52 @@ function renderCirrus(offCtx, time){
   const ow = offCtx.canvas.width, oh = offCtx.canvas.height;
   const img = offCtx.getImageData(0,0,ow,oh);
   const data = img.data;
-
-  // anisotropie forte en X pour faire des "streaks"
   const scaleX = 4.2, scaleY = 1.4;
   const evoX = 0.014, evoY = 0.003;
-
   for(let y=0;y<oh;y++){
     const yy = y/oh;
     for(let x=0;x<ow;x++){
       const xx = x/ow;
-
       const nx = xx*scaleX + time*evoX;
       const ny = yy*scaleY + time*evoY;
-
-      // base + un peu de détail
       const base = Noise.fbm2d(nx, ny, 3);
       const det  = Noise.fbm2d(nx*2.0, ny*2.0, 2);
-
-      // couche très légère (cirrus)
       let a = smoothstep(0.52, 0.60, base) * (0.55 + 0.25*det);
-      a = Math.pow(a, 1.35);   // bords très doux
-      a *= 0.28;               // cirrus fins
+      a = Math.pow(a, 1.35);
+      a *= 0.28;
       const idx = (y*ow + x)*4;
-      data[idx+0] = 255;
-      data[idx+1] = 255;
-      data[idx+2] = 255;
+      data[idx+0] = 255; data[idx+1] = 255; data[idx+2] = 255;
       data[idx+3] = Math.floor(a*255);
     }
   }
   offCtx.putImageData(img,0,0);
 }
-function drawClearExtras(){
-  // fond ciel
-  paintSky('#66b6e7', '#8fd3ff');
 
-  // soleil (halo + micro pulsation)
-  const t = anim.t;
-  const sunX = cssW * 0.83;
-  const sunY = cssH * 0.18;
-  const r    = 40 + Math.sin(t*0.02)*2.5;
-
-  const grad = ctx.createRadialGradient(sunX, sunY, r*0.25, sunX, sunY, r);
-  grad.addColorStop(0, 'rgba(255,245,200,1)');
-  grad.addColorStop(1, 'rgba(255,245,200,0)');
-  ctx.fillStyle = grad;
-  ctx.beginPath(); ctx.arc(sunX, sunY, r, 0, Math.PI*2); ctx.fill();
-
+// ---------- Nuages/ Cirrus Améliorés ----------
+let cloudTick = 0;
+function drawCloudsImproved(){
+  ensureCloudCanvases();
+  cloudTick++;
+  const t = anim.t * 0.002;
+  if(cloudTick % 6 === 0){ renderLayer(ctxB, cloudLayers[1], t*0.85); }
+  if(cloudTick % 4 === 0){ renderLayer(ctxA, cloudLayers[0], t); }
   ctx.save();
-  ctx.globalAlpha = 0.22;
-  ctx.filter = 'blur(1.4px)';
-  ctx.beginPath(); ctx.arc(sunX, sunY, r+16, 0, Math.PI*2); ctx.fill();
-  ctx.filter = 'none'; ctx.restore();
-
-  // cirrus fins offscreen puis upscale avec blur
+  ctx.imageSmoothingEnabled = true;
+  ctx.filter = 'blur(1.0px)';
+  const parB = Math.sin(t*0.07)*6;
+  const parA = Math.sin(t*0.11)*9;
+  ctx.drawImage(cloudB, parB, 0, cssW, cssH);
+  ctx.drawImage(cloudA, parA, 0, cssW, cssH);
+  ctx.filter = 'none';
+  ctx.restore();
+}
+let cirrusTick = 0;
+function drawCirrusImproved(){
   ensureCirrusCanvas();
-  renderCirrus(cirrusCtx, t*0.0024);
+  cirrusTick++;
+  if(cirrusTick % 5 === 0){ renderCirrus(cirrusCtx, anim.t*0.0024); }
   ctx.save();
-  ctx.globalAlpha = 1.0;
+  ctx.globalAlpha = 0.95;
   ctx.filter = 'blur(0.8px)';
   ctx.drawImage(cirrusCanvas, 0, 0, cssW, cssH);
   ctx.filter = 'none';
@@ -329,7 +357,6 @@ function initRain(count=110){
   const mps = anim.wind.speed || 0;
   const ang = ((anim.wind.deg||0) * Math.PI)/180;
   const windVX = Math.cos(ang) * mps;
-
   count = Math.round(count * (cssW/380) * (cssH/220));
   for(let i=0;i<count;i++){
     const len = 8 + Math.random()*14;
@@ -343,7 +370,7 @@ function initRain(count=110){
     });
   }
 }
-function drawRain(){
+function drawRainImproved(){
   for(const d of anim.rain){
     ctx.strokeStyle = `rgba(160,200,255,${d.alpha})`;
     ctx.lineWidth   = d.width;
@@ -352,8 +379,22 @@ function drawRain(){
     ctx.lineTo(d.x + d.vx*2, d.y + d.len);
     ctx.stroke();
     d.x += d.vx; d.y += d.vy;
-    if(d.y > cssH || d.x < -20 || d.x > cssW+20){ d.y = -d.len; d.x = Math.random()*cssW; }
+    if(d.y > cssH-3){
+      ctx.save();
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = 'rgba(180,210,255,0.35)';
+      ctx.beginPath();
+      ctx.ellipse(d.x, cssH-2, 3.5, 1.2, 0, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+      d.y = -d.len; d.x = Math.random()*cssW;
+    }
+    if(d.x < -20 || d.x > cssW+20){ d.y = -d.len; d.x = Math.random()*cssW; }
   }
+  const ref = ctx.createLinearGradient(cssW*0.1, cssH-8, cssW*0.9, cssH);
+  ref.addColorStop(0, 'rgba(180,200,220,0.06)');
+  ref.addColorStop(1, 'rgba(180,200,220,0.00)');
+  ctx.fillStyle = ref; ctx.fillRect(cssW*0.1, cssH-10, cssW*0.8, 10);
 }
 
 // ================== NEIGE ==================
@@ -366,7 +407,6 @@ function initSnow(count=85){
     const swayAmp = 8 + Math.random()*16;
     const swayFreq = 0.0018 + Math.random()*0.0035;
     const blur = Math.random() < 0.35 ? 2 : 0;
-
     anim.snow.push({
       x: Math.random()*cssW, y: Math.random()*cssH,
       r, vy, baseX: Math.random()*cssW,
@@ -375,10 +415,12 @@ function initSnow(count=85){
     });
   }
 }
-function drawSnow(){
+function drawSnowImproved(){
+  const ang = ((anim.wind.deg||0) * Math.PI)/180;
+  const windVX = Math.cos(ang) * (anim.wind.speed||0) * 0.6;
   for(const f of anim.snow){
     f.phase += f.swayFreq * (1 + f.vy*0.08);
-    f.x = f.baseX + Math.sin(f.phase) * f.swayAmp;
+    f.x = f.baseX + Math.sin(f.phase) * f.swayAmp + windVX*0.8;
 
     ctx.shadowColor = `rgba(255,255,255,${f.alpha})`;
     ctx.shadowBlur  = f.blur;
@@ -394,55 +436,91 @@ function drawSnow(){
     f.y += f.vy;
     if(f.y > cssH){ f.y = -f.r; f.baseX = Math.random()*cssW; }
   }
+  const acc = ctx.createLinearGradient(0, cssH-20, 0, cssH);
+  acc.addColorStop(0, 'rgba(255,255,255,0.06)');
+  acc.addColorStop(1, 'rgba(255,255,255,0.14)');
+  ctx.fillStyle = acc; ctx.fillRect(0, cssH-20, cssW, 20);
 }
 
 // ================== ÉCLAIRS ==================
-function drawLightning(){
-  ctx.fillStyle = 'rgba(255,255,255,0.14)';
-  ctx.fillRect(0,0,cssW,cssH);
-  const startX = cssW*0.65 + (Math.random()-0.5)*40;
-  let x = startX, y = cssH*0.15;
-  ctx.strokeStyle = 'rgba(255,255,200,0.85)';
-  ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(x,y);
-  for(let i=0;i<6;i++){ x += (Math.random()<0.5?-1:1)*(12 + Math.random()*14); y += 20 + Math.random()*26; ctx.lineTo(x,y); }
-  ctx.stroke();
+let thunderFlash = 0;
+function drawLightningImproved(){
+  thunderFlash = 0.22; // intensité initiale
+  const branches = 1 + Math.floor(Math.random()*2);
+  for(let b=0; b<branches; b++){
+    const startX = cssW*0.65 + (Math.random()-0.5)*60;
+    let x = startX, y = cssH*0.12;
+    ctx.strokeStyle = 'rgba(255,255,200,0.85)';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x,y);
+    const segs = 6 + Math.floor(Math.random()*4);
+    for(let i=0;i<segs;i++){
+      x += (Math.random()<0.5?-1:1)*(12 + Math.random()*16);
+      y += 18 + Math.random()*28;
+      ctx.lineTo(x,y);
+      if(Math.random()<0.28){
+        ctx.moveTo(x,y);
+        const x2 = x + (Math.random()<0.5?-1:1)*(8+Math.random()*12);
+        const y2 = y + 8 + Math.random()*14;
+        ctx.lineTo(x2,y2);
+      }
+    }
+    ctx.stroke();
+  }
+}
+function applyThunderFlash(){
+  if(thunderFlash > 0){
+    ctx.fillStyle = `rgba(255,255,255,${thunderFlash})`;
+    ctx.fillRect(0,0,cssW,cssH);
+    thunderFlash = Math.max(0, thunderFlash - 0.02); // decay
+  }
+}
+
+// ---------- VOILE / VIGNETTE ----------
+function integrateFogAndVignette(){
+  const fog = SceneConfig[anim.type]?.fog ?? 0.12;
+  if(anim.type!=='clear'){
+    const g = ctx.createLinearGradient(0,0,0,cssH);
+    g.addColorStop(0, `rgba(220,230,235,${fog*0.4})`);
+    g.addColorStop(0.5, `rgba(220,230,235,${fog})`);
+    g.addColorStop(1, `rgba(220,230,235,${fog*0.4})`);
+    ctx.fillStyle = g; ctx.fillRect(0,0,cssW,cssH);
+  }
+  const vg = ctx.createRadialGradient(cssW*0.5, cssH*0.5, cssH*0.35, cssW*0.5, cssH*0.5, cssH*0.65);
+  vg.addColorStop(0, 'rgba(0,0,0,0)');
+  vg.addColorStop(1, 'rgba(0,0,0,0.10)');
+  ctx.fillStyle = vg; ctx.fillRect(0,0,cssW,cssH);
 }
 
 // ================== BOUCLE ==================
-function setScene(kind){
-  anim.type=kind;
-  if(kind==='rain' || kind==='drizzle' || kind==='thunder') initRain();
-  else if(kind==='snow') initSnow();
-}
 function loop(){
   anim.t++;
+  updateDayCycle();
+  paintSkyScene();
 
-  // Fond + décor
+  // Décor
   if(anim.type==='clear'){
-    drawClearExtras();        // ciel + soleil + cirrus
+    drawSunMoon();
+    drawCirrusImproved();
   } else {
-    // fond météo
-    if(anim.type==='clouds'){ paintSky('#7f93a5','#70859a'); }
-    else if(['rain','drizzle','thunder'].includes(anim.type)){ paintSky('#5a6b76','#4d5e6a'); }
-    else if(anim.type==='snow'){ paintSky('#b9d6f2','#a8c9ea'); }
-    else { paintSky('#6b7280','#606872'); } // mist
-    drawClouds();             // nuages réalistes
+    drawSunMoon();          // lune de nuit, soleil discret en jour (selon cycle)
+    drawCloudsImproved();
   }
 
   // Phénomènes
-  if(anim.type==='rain' || anim.type==='drizzle'){ drawRain(); }
-  else if(anim.type==='thunder'){ drawRain(); if(anim.t % 140 === 0) drawLightning(); }
-  else if(anim.type==='snow'){ drawSnow(); }
-
-  // Légère brume intégratrice (hors clear)
-  if(anim.type!=='clear'){
-    const g = ctx.createLinearGradient(0,0,0,cssH);
-    g.addColorStop(0, 'rgba(220,230,235,0.08)');
-    g.addColorStop(0.5, 'rgba(220,230,235,0.14)');
-    g.addColorStop(1, 'rgba(220,230,235,0.08)');
-    ctx.fillStyle = g; ctx.fillRect(0,0,cssW,cssH);
+  if(anim.type==='rain' || anim.type==='drizzle'){
+    drawRainImproved();
+  } else if(anim.type==='thunder'){
+    drawRainImproved();
+    if(anim.t % 140 === 0 || Math.random()<0.006){
+      drawLightningImproved();
+    }
+    applyThunderFlash();
+  } else if(anim.type==='snow'){
+    drawSnowImproved();
   }
+
+  integrateFogAndVignette();
 
   requestAnimationFrame(loop);
 }
@@ -460,9 +538,15 @@ function toSceneFromMain(main){
   if(['mist','haze','fog','smoke','dust'].includes(m)) return 'mist';
   return 'clouds';
 }
+function setScene(kind){
+  anim.type=kind;
+  if(kind==='rain' || kind==='drizzle' || kind==='thunder'){
+    const base = kind==='drizzle' ? 70 : (kind==='thunder' ? 150 : 110);
+    initRain(base);
+  } else if(kind==='snow'){ initSnow(85); }
+}
 
 async function getWeather(){
-  // ⚠️ JS doit utiliser & bruts (pas d'entités HTML)
   const url = `https://api.openweathermap.org/data/2.5/weather?lat=${LAT}&lon=${LON}&units=metric&lang=fr&appid=${API_KEY}`;
   try{
     const res = await fetch(url, { cache: 'no-store' });
@@ -492,13 +576,16 @@ async function getWeather(){
     anim.wind.deg   = (data.wind && data.wind.deg)   ? data.wind.deg   : 0;
 
     setScene(toSceneFromMain(main));
-    $('city').textContent = 'Nice, FR'; // adapte si tu changes LAT/LON
+    const cityName = (data.name || 'Nice');
+    const country  = ((data.sys && data.sys.country) || 'FR');
+    $('city').textContent = `${cityName}, ${country}`;
   } catch(e){
     console.error(e);
     $('updated').textContent = `Erreur de mise à jour`;
     $('desc').textContent = `Impossible de récupérer la météo`;
     $('temp').textContent = '--°C';
     setScene('mist');
+    $('city').textContent = 'Nice, FR';
   }
 }
 
@@ -507,4 +594,3 @@ getWeather();
 </script>
 </body>
 </html>
-``
