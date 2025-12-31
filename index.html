@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Widget Météo – Clear réaliste + nuages réalistes (amélioré)</title>
+<title>Widget Météo – Clear réaliste + nuages réalistes (amélioré + peu nuageux)</title>
 <style>
   html, body {
     margin:0; padding:0;
@@ -120,7 +120,8 @@ let anim = {
   t:0,
   rain:[],
   snow:[],
-  wind:{ speed:0, deg:0 }
+  wind:{ speed:0, deg:0 },
+  cloudMode: 'overcast' // 'few' pour "peu nuageux"
 };
 
 // ================== OUTILS ==================
@@ -155,20 +156,37 @@ function lerpColor(a,b,t){
   const r=Math.round(ar+(br-ar)*t), g=Math.round(ag+(bg-ag)*t), b2=Math.round(ab+(bb-ab)*t);
   return `rgb(${r},${g},${b2})`;
 }
+
+// --- Palette clouds modulée pour "peu nuageux" (plus claire qu'overcast) ---
 function paintSkyScene(){
-  const cfg = SceneConfig[anim.type] || SceneConfig.clouds;
+  const isFew = anim.type==='clouds' && anim.cloudMode==='few';
+  const baseCfg = SceneConfig[anim.type] || SceneConfig.clouds;
+  const targetCfg = isFew ? {
+    top:    lerpColor(baseCfg.top,    SceneConfig.clear.top,    0.35),
+    mid:    lerpColor(baseCfg.mid,    SceneConfig.clear.mid,    0.35),
+    bottom: lerpColor(baseCfg.bottom, SceneConfig.clear.bottom, 0.35),
+    fog:    Math.max(0, baseCfg.fog - 0.05)
+  } : baseCfg;
+
   const dayT = dayCycle.night ? 0 : 1;
-  const top    = lerpColor(cfg.top,    '#58ace0', 0.15*dayT);
-  const mid    = lerpColor(cfg.mid,    '#76c1ea', 0.10*dayT);
-  const bottom = lerpColor(cfg.bottom, '#95d4ff', 0.10*dayT);
+  const top    = lerpColor(targetCfg.top,    '#58ace0', 0.12*dayT);
+  const mid    = lerpColor(targetCfg.mid,    '#76c1ea', 0.08*dayT);
+  const bottom = lerpColor(targetCfg.bottom, '#95d4ff', 0.08*dayT);
+
   const g = ctx.createLinearGradient(0,0,0,cssH);
-  g.addColorStop(0, top); g.addColorStop(0.6, mid); g.addColorStop(1, bottom);
-  ctx.fillStyle = g; ctx.fillRect(0,0,cssW,cssH);
+  g.addColorStop(0, top);
+  g.addColorStop(0.6, mid);
+  g.addColorStop(1, bottom);
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,cssW,cssH);
+
   const h = ctx.createLinearGradient(0, cssH*0.55, 0, cssH);
   h.addColorStop(0, 'rgba(255,255,255,0)');
-  h.addColorStop(1, dayCycle.night ? 'rgba(200,220,255,0.08)' : 'rgba(255,255,255,0.15)');
-  ctx.fillStyle = h; ctx.fillRect(0, cssH*0.55, cssW, cssH*0.45);
+  h.addColorStop(1, dayCycle.night ? 'rgba(200,220,255,0.08)' : 'rgba(255,255,255,0.12)');
+  ctx.fillStyle = h;
+  ctx.fillRect(0, cssH*0.55, cssW, cssH*0.45);
 }
+
 function drawSunMoon(){
   if(dayCycle.night){
     ctx.save(); ctx.globalAlpha = 0.65;
@@ -264,10 +282,27 @@ const smoothstep = (a,b,x) => {
   const t = Math.max(0, Math.min(1, (x-a)/(b-a)));
   return t*t*(3-2*t);
 };
-function renderLayer(offCtx, layer, time){
+
+// --- Profils clouds : overcast vs few (peu nuageux) ---
+const CLOUD_PROFILE = {
+  overcast: {
+    near:  { threshold: 0.48, alpha: 0.80 },
+    far:   { threshold: 0.52, alpha: 0.60 }
+  },
+  few: {
+    near:  { threshold: 0.62, alpha: 0.65 }, // seuils plus hauts => moins de couverture
+    far:   { threshold: 0.66, alpha: 0.50 }
+  }
+};
+
+function renderLayer(offCtx, layer, time, override) {
   const ow = offCtx.canvas.width, oh = offCtx.canvas.height;
   const img = offCtx.getImageData(0,0,ow,oh);
   const data = img.data;
+
+  const thr = override?.threshold ?? layer.threshold;
+  const alphaBase = override?.alpha ?? layer.alpha;
+
   for(let y=0;y<oh;y++){
     const yy = y/oh;
     for(let x=0;x<ow;x++){
@@ -275,10 +310,18 @@ function renderLayer(offCtx, layer, time){
       const nx = xx*layer.baseScale + time*layer.evolveX;
       const ny = yy*layer.baseScale + time*layer.evolveY;
       const base = Noise.fbm2d(nx, ny, 3);
-      const cover = smoothstep(layer.threshold-0.10, layer.threshold+0.08, base);
-      const det = Noise.fbm2d(nx*2.2, ny*2.2, 2);
+      const cover = smoothstep(thr-0.10, thr+0.08, base);
+      const det   = Noise.fbm2d(nx*2.2, ny*2.2, 2);
+
       let a = cover * (0.65 + det*layer.detailMix);
-      a = Math.pow(a, 1.15); a *= layer.alpha;
+      a = Math.pow(a, 1.15);
+      a *= alphaBase;
+
+      // respiration visuelle très légère en 'few'
+      if (override?.breath) {
+        a *= 0.95 + 0.05 * Math.sin((anim.t*0.0017) + xx*1.2);
+      }
+
       const idx = (y*ow + x)*4;
       data[idx+0] = 246; data[idx+1] = 250; data[idx+2] = 255; // blanc bleuté
       data[idx+3] = Math.floor(a*255);
@@ -299,21 +342,28 @@ function renderCirrus(offCtx, time){
   const ow = offCtx.canvas.width, oh = offCtx.canvas.height;
   const img = offCtx.getImageData(0,0,ow,oh);
   const data = img.data;
+
   const scaleX = 4.2, scaleY = 1.4;
   const evoX = 0.014, evoY = 0.003;
+
   for(let y=0;y<oh;y++){
     const yy = y/oh;
     for(let x=0;x<ow;x++){
       const xx = x/ow;
+
       const nx = xx*scaleX + time*evoX;
       const ny = yy*scaleY + time*evoY;
+
       const base = Noise.fbm2d(nx, ny, 3);
       const det  = Noise.fbm2d(nx*2.0, ny*2.0, 2);
+
       let a = smoothstep(0.52, 0.60, base) * (0.55 + 0.25*det);
-      a = Math.pow(a, 1.35);
-      a *= 0.28;
+      a = Math.pow(a, 1.35);   // bords doux
+      a *= 0.28;               // cirrus fins
       const idx = (y*ow + x)*4;
-      data[idx+0] = 255; data[idx+1] = 255; data[idx+2] = 255;
+      data[idx+0] = 255;
+      data[idx+1] = 255;
+      data[idx+2] = 255;
       data[idx+3] = Math.floor(a*255);
     }
   }
@@ -325,19 +375,50 @@ let cloudTick = 0;
 function drawCloudsImproved(){
   ensureCloudCanvases();
   cloudTick++;
-  const t = anim.t * 0.002;
-  if(cloudTick % 6 === 0){ renderLayer(ctxB, cloudLayers[1], t*0.85); }
-  if(cloudTick % 4 === 0){ renderLayer(ctxA, cloudLayers[0], t); }
+
+  const isFew = anim.cloudMode === 'few';
+  const tBase = anim.t * 0.002;
+
+  // Évolution quasi nulle en "few" (très slow)
+  const tNear = isFew ? tBase * 0.15 : tBase * 1.00;
+  const tFar  = isFew ? tBase * 0.10 : tBase * 0.85;
+
+  // Throttle plus agressif en "few"
+  const nearStep = isFew ? 10 : 4;   // recalc moins fréquent
+  const farStep  = isFew ? 14 : 6;
+
+  const profile = isFew ? CLOUD_PROFILE.few : CLOUD_PROFILE.overcast;
+
+  if (cloudTick % farStep === 0) {
+    renderLayer(ctxB, cloudLayers[1], tFar, { threshold: profile.far.threshold, alpha: profile.far.alpha, breath: isFew });
+  }
+  if (cloudTick % nearStep === 0) {
+    renderLayer(ctxA, cloudLayers[0], tNear, { threshold: profile.near.threshold, alpha: profile.near.alpha, breath: isFew });
+  }
+
   ctx.save();
   ctx.imageSmoothingEnabled = true;
   ctx.filter = 'blur(1.0px)';
-  const parB = Math.sin(t*0.07)*6;
-  const parA = Math.sin(t*0.11)*9;
-  ctx.drawImage(cloudB, parB, 0, cssW, cssH);
-  ctx.drawImage(cloudA, parA, 0, cssW, cssH);
+
+  // Parallax très discret en "few"
+  const parB = isFew ? Math.sin(tBase*0.03)*2 : Math.sin(tBase*0.07)*6;
+  const parA = isFew ? Math.sin(tBase*0.05)*3 : Math.sin(tBase*0.11)*9;
+
+  // Dérive très lente (ancre visuelle)
+  const driftX = isFew ? Math.sin(anim.t*0.0007) * 1.5 : 0;
+
+  ctx.drawImage(cloudB, parB + driftX, 0, cssW, cssH);
+  ctx.drawImage(cloudA, parA + driftX, 0, cssW, cssH);
+
   ctx.filter = 'none';
   ctx.restore();
+
+  // Cirrus fins en fond pour 'few' (très calmes)
+  if (isFew) {
+    drawCirrusFewBackdrop();
+  }
 }
+
 let cirrusTick = 0;
 function drawCirrusImproved(){
   ensureCirrusCanvas();
@@ -346,6 +427,22 @@ function drawCirrusImproved(){
   ctx.save();
   ctx.globalAlpha = 0.95;
   ctx.filter = 'blur(0.8px)';
+  ctx.drawImage(cirrusCanvas, 0, 0, cssW, cssH);
+  ctx.filter = 'none';
+  ctx.restore();
+}
+
+// Cirrus fond "few" (faible opacité, recalcul rare)
+let cirrusFewTick = 0;
+function drawCirrusFewBackdrop(){
+  ensureCirrusCanvas();
+  cirrusFewTick++;
+  if (cirrusFewTick % 16 === 0) {
+    renderCirrus(cirrusCtx, anim.t * 0.0012); // 2x plus lent que clear
+  }
+  ctx.save();
+  ctx.globalAlpha = 0.50;          // plus discret que scène clear
+  ctx.filter = 'blur(0.7px)';
   ctx.drawImage(cirrusCanvas, 0, 0, cssW, cssH);
   ctx.filter = 'none';
   ctx.restore();
@@ -503,7 +600,7 @@ function loop(){
     drawSunMoon();
     drawCirrusImproved();
   } else {
-    drawSunMoon();          // lune de nuit, soleil discret en jour (selon cycle)
+    drawSunMoon();          // lune/soleil selon cycle
     drawCloudsImproved();
   }
 
@@ -538,6 +635,18 @@ function toSceneFromMain(main){
   if(['mist','haze','fog','smoke','dust'].includes(m)) return 'mist';
   return 'clouds';
 }
+
+// --- Helpers peu nuageux (icon/desc OpenWeather) ---
+function isFewCloudsByIcon(iconCode) {
+  // OpenWeather: 02d / 02n = few clouds
+  return typeof iconCode === 'string' && iconCode.startsWith('02');
+}
+function isFewCloudsByDesc(desc) {
+  if (!desc) return false;
+  const d = desc.toLowerCase();
+  return d.includes('peu nuageux') || d.includes('few clouds') || d.includes('nubes dispersas');
+}
+
 function setScene(kind){
   anim.type=kind;
   if(kind==='rain' || kind==='drizzle' || kind==='thunder'){
@@ -547,6 +656,7 @@ function setScene(kind){
 }
 
 async function getWeather(){
+  // ⚠️ URL correcte : '&' (pas &amp;)
   const url = `https://api.openweathermap.org/data/2.5/weather?lat=${LAT}&lon=${LON}&units=metric&lang=fr&appid=${API_KEY}`;
   try{
     const res = await fetch(url, { cache: 'no-store' });
@@ -575,7 +685,15 @@ async function getWeather(){
     anim.wind.speed = (data.wind && data.wind.speed) ? data.wind.speed : 0; // m/s
     anim.wind.deg   = (data.wind && data.wind.deg)   ? data.wind.deg   : 0;
 
-    setScene(toSceneFromMain(main));
+    const scene = toSceneFromMain(main);
+    setScene(scene);
+
+    // Détecter "peu nuageux"
+    anim.cloudMode = 'overcast';
+    if (scene === 'clouds' && (isFewCloudsByIcon(iconCode) || isFewCloudsByDesc(desc))) {
+      anim.cloudMode = 'few';
+    }
+
     const cityName = (data.name || 'Nice');
     const country  = ((data.sys && data.sys.country) || 'FR');
     $('city').textContent = `${cityName}, ${country}`;
